@@ -1,0 +1,144 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   tokens.css — the design system.
+
+   Every value here was extracted from datalexing.com and is annotated with
+   where it came from. Nothing in this file styles anything directly; it only
+   names values. Components in app.css use the names, never raw hex. That is
+   what makes the dark theme a ~25-line override instead of a rewrite.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Type ────────────────────────────────────────────────────────────────
+     Three families, three jobs. Onest for display, IBM Plex Sans for prose
+     and UI, Fragment Mono for anything numeric. Numbers get a monospace face
+     so that a value changing under a slider does not make the row jitter. */
+  --font-display: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Fragment Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Sizes observed on the source site, ordered into a scale. */
+  --fs-2xs: 11px;
+  --fs-xs:  12px;
+  --fs-sm:  14px;
+  --fs-base:15px;
+  --fs-md:  16px;
+  --fs-lg:  20px;
+  --fs-xl:  24px;
+  --fs-2xl: 32px;
+  --fs-3xl: 46px;
+
+  --lh-tight: 1.1;
+  --lh-snug:  1.35;
+  --lh-body:  1.6;
+  --ls-tight: -0.02em;   /* headings, from the h1/h2 rules */
+  --ls-wide:  0.09em;    /* small-caps section labels */
+
+  /* ── Spacing — 4px grid ──────────────────────────────────────────────────
+     The source uses 4/8/10/12/16/20/24/32/40/48/64/96. 10px is the odd one
+     out but it is the single most-used gap on the site, so it stays. */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-2h: 10px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --sp-24: 96px;
+
+  /* ── Radius ──────────────────────────────────────────────────────────────
+     16px is the house radius (16 uses); 64px is the pill used on buttons. */
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-pill: 64px;
+
+  /* ── Layout ──────────────────────────────────────────────────────────── */
+  --container: 1280px;
+  --measure:   809px;   /* text column width on the source site */
+
+  /* ── Neutral ramp ──────────────────────────────────────────────────────── */
+  --n-0:   #ffffff;
+  --n-50:  #fafafa;
+  --n-100: #f6f6f8;
+  --n-200: #e6e6eb;
+  --n-400: #a4a8af;
+  --n-450: #9da4ae;
+  --n-500: #6c737f;
+  --n-600: #50565d;
+  --n-700: #47474f;
+  --n-800: #303038;
+  --n-950: #020a0f;   /* the site's true black — a very slightly blue near-black */
+
+  /* ── Accent ramp ───────────────────────────────────────────────────────── */
+  --a-50:  #fdf2f8;
+  --a-100: #fce7f3;
+  --a-200: #fbcfe8;
+  --a-300: #f9a8d4;
+  --a-400: #f472b6;
+  --a-500: #ee4498;   /* the brand pink */
+  --a-600: #db2777;
+  --a-800: #9d174d;
+
+  /* ── Semantic roles — LIGHT (default, matches datalexing) ───────────────
+     Components only ever reference the names below. */
+  --bg:        var(--n-0);
+  --surface:   var(--n-100);
+  --surface-2: var(--n-50);
+  --line:      var(--n-200);
+  --line-soft: #f0f0f3;
+  --faint:     #f4f4f7;        /* canvas gridlines */
+  --ink:       var(--n-950);
+  --ink-2:     var(--n-600);
+  --ink-3:     var(--n-450);
+  --ink-4:     var(--n-400);
+  --fill-soft: rgba(103, 103, 103, 0.08);   /* lifted verbatim from the source */
+
+  /* `accent` is the live/moving element. Nothing static is allowed to use it. */
+  --accent:      var(--a-500);
+  --accent-soft: var(--a-100);
+  --accent-line: var(--a-200);
+  --accent-ink:  var(--a-600);
+  --on-accent:   #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(2, 10, 15, 0.05);
+  --shadow-md: 0 4px 16px rgba(2, 10, 15, 0.07);
+
+  --speed: 140ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Semantic roles — DARK ─────────────────────────────────────────────────
+   Only the roles are redefined; the ramps above are untouched. The page
+   background becomes the site's own near-black, so the dark theme is still
+   built from datalexing's palette rather than invented alongside it.
+   The accent lightens one step (500 → 400) to hold contrast on dark. */
+:root[data-theme='dark'] {
+  --bg:        #020a0f;
+  --surface:   #0a1218;
+  --surface-2: #0e161d;
+  --line:      #1d262e;
+  --line-soft: #151d24;
+  --faint:     #101820;
+  --ink:       #f6f6f8;
+  --ink-2:     #a4a8af;
+  --ink-3:     #6c737f;
+  --ink-4:     #50565d;
+  --fill-soft: rgba(200, 200, 210, 0.07);
+
+  --accent:      var(--a-400);
+  --accent-soft: rgba(244, 114, 182, 0.14);
+  --accent-line: rgba(244, 114, 182, 0.34);
+  --accent-ink:  var(--a-300);
+  --on-accent:   #020a0f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --speed: 0ms; }
+}
