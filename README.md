@@ -42,50 +42,26 @@ what you don't know, rearranges it, substitutes, and shows every step. Where a
 **Reference** — the five equations, when each applies, and the projectile
 results derived from them.
 
-## Running it locally
+## Status
+
+The **physics engine is finished and tested**. The interface is being redesigned
+from scratch.
 
 ```bash
-node dev-server.mjs
+node test/engine.test.mjs     # 26 checks against hand-worked A-level answers
 ```
-
-Then open http://localhost:4173. The server only exists to send `no-store` so
-ES modules aren't cached between edits — any static server works.
-
-There is no build step and no dependencies. It is HTML, CSS and ES modules.
 
 ## Layout
 
 ```
-index.html            markup for all three views
-css/tokens.css        the design system — colours, type, spacing, radii
-css/app.css           components; uses only token names, never raw hex
-js/core/suvat.js      the five equations + a solver that shows its working
-js/core/projectile.js the idealised projectile model
-js/render/util.js     canvas helpers, palette bridge, label collision layer
-js/render/scene2d.js  side-on view
-js/render/scene3d.js  perspective wireframe view (hand-rolled, no 3D library)
-js/render/graphs.js   the three graphs
-js/ui/controls.js     control panel, built from a declarative spec
-js/app.js             state and wiring
+js/core/suvat.js       the five equations + a solver that shows its working
+js/core/projectile.js  the idealised projectile model
+test/engine.test.mjs   hand-worked answers that prove the above
 ```
 
-Two conventions worth knowing if you edit it:
-
-1. **Components never use raw colours.** They reference roles from
-   `tokens.css` (`--ink`, `--line`, `--accent`). That is why the dark theme is a
-   short override block rather than a second stylesheet.
-
-2. **The accent colour means "live".** Pink marks the moving projectile, its
-   velocity vector, the path already flown and the time cursor — and nothing
-   else. Everything static is greyscale, so colour carries information.
-
-`window.SUVAT` is exposed in the console for poking at state:
-
-```js
-SUVAT.state.theta = 60; SUVAT.redraw();
-```
+The previous interface is preserved in commit `4723636` if any of it is wanted
+back.
 
 ## Credits
 
-Visual system adapted from datalexing.com — Onest, IBM Plex Sans and Fragment
-Mono, a near-black `#020a0f` ink, and the `#ee4498` accent.
+Built by abtbinrashid.
