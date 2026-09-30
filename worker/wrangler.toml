@@ -1,0 +1,19 @@
+name = "suvat-reader"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Lock the Worker to your site. Comma separated, no trailing slash.
+# Leave empty ONLY while testing locally.
+ALLOWED_ORIGINS = "https://abtbinrashid.github.io"
+
+# Per-IP rate limiting. Optional — without it the Worker still works and simply
+# leans on Gemini's own 429. To enable:
+#   npx wrangler kv namespace create RATE_KV
+# then paste the printed id below and uncomment.
+# [[kv_namespaces]]
+# binding = "RATE_KV"
+# id = "paste-the-id-here"
+
+# The API key is NOT in this file and must never be. Set it as a secret:
+#   npx wrangler secret put GEMINI_API_KEY
