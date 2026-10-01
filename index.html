@@ -1,29 +1,23 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SUVAT — projectile motion for A-level</title>
 <meta name="description" content="An interactive projectile motion playground for A-level Physics and Maths. The idealised model: no air resistance, no wind, uniform g.">
-<meta name="color-scheme" content="dark light">
+<meta name="color-scheme" content="light dark">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./css/tokens.css">
 <link rel="stylesheet" href="./css/app.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'><path d='M3 26 Q15 -8 27 26' fill='none' stroke='%23ea580c' stroke-width='3' stroke-linecap='round'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'><path d='M3 26 Q15 -8 27 26' fill='none' stroke='%23c2410c' stroke-width='3' stroke-linecap='round'/></svg>">
 </head>
 <body>
 
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <svg viewBox="0 0 30 30" aria-hidden="true">
-        <path d="M3 26 Q15 -8 27 26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="color:var(--accent)"/>
-        <circle cx="27" cy="26" r="3.6" fill="var(--accent)"/>
-      </svg>
-      <span>Suvat</span>
-    </div>
+    <div class="brand">SUVAT</div>
 
     <div class="pick">
       <label for="scenario">Scenario</label>
@@ -31,50 +25,67 @@
     </div>
 
     <div class="top-right">
-      <button class="tbtn" id="working-btn" aria-pressed="true">Working</button>
-      <button class="tbtn" id="theme-btn">Light</button>
+      <button class="tbtn" id="options-btn" aria-pressed="false">Options</button>
+      <button class="tbtn" id="theme-btn">Dark</button>
     </div>
   </header>
 
-  <div class="main" id="main" data-working="on">
+  <div class="main" id="main" data-options="off">
 
-    <aside class="col controls" aria-label="Values">
-      <p class="note" id="scenario-note"></p>
-      <div id="fields"></div>
+    <!-- ── values ──────────────────────────────────────────────────── -->
+    <aside class="side" aria-label="Values">
+      <p class="lede" id="scenario-note"></p>
 
-      <div class="cgroup">
-        <h2 class="ctitle">Gravitational field strength</h2>
-        <div class="chips" id="g-chips"></div>
+      <div class="card">
+        <div id="fields"></div>
+
+        <div class="field">
+          <div class="f-head"><span class="f-name">Gravitational field strength</span><span class="f-sym">g</span></div>
+          <div class="chips" id="g-chips"></div>
+        </div>
       </div>
 
-      <div class="cgroup">
-        <h2 class="ctitle">Show</h2>
-        <div class="checks" id="shows"></div>
-      </div>
+      <button class="fire" id="fire">Fire</button>
+      <p class="hint" id="fire-hint">The path is drawn below. Press Fire to run it.</p>
     </aside>
 
+    <!-- ── stage ───────────────────────────────────────────────────── -->
     <section class="stage">
       <div class="canvas-wrap"><canvas id="scene" aria-label="Projectile motion"></canvas></div>
 
-      <div class="graphs">
-        <div class="gcell"><canvas id="g-s" aria-label="Displacement against time"></canvas></div>
-        <div class="gcell"><canvas id="g-v" aria-label="Velocity against time"></canvas></div>
-        <div class="gcell"><canvas id="g-a" aria-label="Acceleration against time"></canvas></div>
-      </div>
-
-      <div class="readouts" id="readouts"></div>
+      <div class="boxes" id="boxes"></div>
 
       <div class="transport">
-        <button class="play" id="play" aria-label="Pause">
-          <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        <button class="play" id="play" aria-label="Play" disabled>
+          <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Time">
-        <div class="t-read" id="t-read">t = 0.00 s</div>
+        <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Time" disabled>
         <button class="tbtn" id="reset">Reset</button>
       </div>
     </section>
 
-    <aside class="col working" id="working" aria-label="Working"></aside>
+    <!-- ── options (closed by default) ─────────────────────────────── -->
+    <aside class="opts" id="opts" aria-label="Options">
+      <h2 class="otitle">Show on the diagram</h2>
+      <div class="checks" id="shows"></div>
+
+      <h2 class="otitle">Extras</h2>
+      <div class="checks" id="extras"></div>
+
+      <div id="graphs-wrap" hidden>
+        <h2 class="otitle">Graphs</h2>
+        <div class="graphs">
+          <div class="gcell"><canvas id="g-s" aria-label="Displacement against time"></canvas></div>
+          <div class="gcell"><canvas id="g-v" aria-label="Velocity against time"></canvas></div>
+          <div class="gcell"><canvas id="g-a" aria-label="Acceleration against time"></canvas></div>
+        </div>
+      </div>
+
+      <div id="working-wrap" hidden>
+        <h2 class="otitle">Working</h2>
+        <div id="working"></div>
+      </div>
+    </aside>
   </div>
 </div>
 

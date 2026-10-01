@@ -1,4 +1,8 @@
 // app.js — state and wiring.
+//
+// The flow is deliberate: choose a scenario, set the values, see the path
+// drawn, then Fire. Nothing is animating and no readings exist until the
+// student asks for them. Everything beyond that lives behind Options.
 
 import { flight, optimumAngle } from './core/projectile.js';
 import { speedFromRange } from './core/question.js';
@@ -14,40 +18,42 @@ const state = {
   id: DEFAULT_SCENARIO,
   u: 28, theta: 45, h: 25, g: 9.8,
   unknown: { u: false, theta: false, h: false },
-  knownRange: null,            // only used when a value is marked unknown
-  t: 0, playing: true,
-  show: { path: true, ticks: true, velocity: true, components: true,
-          acceleration: false, apex: true, range: true, grid: true },
-  working: true,
+  knownRange: null,
+  t: 0, fired: false, playing: false,
+  // A first-time view shows the path, the object and its velocity. Everything
+  // else is an option, because the first screen was doing far too much.
+  show: { path: true, velocity: true, apex: true, range: true,
+          components: false, ticks: false, grid: false, acceleration: false },
+  extras: { graphs: false, working: false },
+  options: false,
 };
 
 const cam = scene.createCamera();
-let f = null, second = null, scenario = null, derived = null, dirty = true;
+let f = null, second = null, scenario = null, dirty = true;
 
-/* ── fields ──────────────────────────────────────────────────────────── */
 const FIELDS = [
-  { key: 'u',     name: 'Initial velocity',   sym: 'u', unit: 'm s⁻¹', min: 0,   max: 100, step: 0.1 },
+  { key: 'u',     name: 'Initial velocity',    sym: 'u', unit: 'm s⁻¹', min: 0,   max: 100, step: 0.1 },
   { key: 'theta', name: 'Angle of projection', sym: 'θ', unit: '°',     min: -90, max: 90,  step: 0.1 },
-  { key: 'h',     name: 'Launch height',      sym: 'h', unit: 'm',     min: 0,   max: 500, step: 0.1 },
+  { key: 'h',     name: 'Launch height',       sym: 'h', unit: 'm',     min: 0,   max: 500, step: 0.1 },
 ];
 
-const G_CHIPS = [
-  { label: '9.8', g: 9.8 }, { label: '10', g: 10 }, { label: '9.81', g: 9.81 },
-  { label: 'Moon 1.62', g: 1.62 }, { label: 'None', g: 0 },
-];
+const G_CHIPS = [{ label: '9.8', g: 9.8 }, { label: '10', g: 10 },
+                 { label: 'Moon', g: 1.62 }, { label: 'None', g: 0 }];
 
 const SHOWS = [
-  { key: 'path',         label: 'Path',                   hue: 'vel' },
-  { key: 'velocity',     label: 'Velocity',               hue: 'vel' },
-  { key: 'components',   label: 'Components of velocity', hue: 'vel' },
-  { key: 'acceleration', label: 'Acceleration',           hue: 'acc' },
+  { key: 'components',   label: 'Components of velocity' },
+  { key: 'ticks',        label: 'Equal time steps' },
+  { key: 'acceleration', label: 'Acceleration' },
   { key: 'apex',         label: 'Greatest height' },
   { key: 'range',        label: 'Horizontal displacement' },
-  { key: 'ticks',        label: 'Equal time steps' },
   { key: 'grid',         label: 'Grid' },
 ];
+const EXTRAS = [
+  { key: 'graphs',  label: 'Graphs against time' },
+  { key: 'working', label: 'Show the working' },
+];
 
-/* ── scenario picker — one dropdown, not twenty-six buttons ──────────── */
+/* ── scenario ───────────────────────────────────────────────────────── */
 function buildPicker() {
   const sel = $('scenario');
   sel.innerHTML = GROUPS.map((g) => {
@@ -65,75 +71,78 @@ function loadScenario(id) {
   Object.assign(state, scenario.params);
   state.unknown = { u: false, theta: false, h: false };
   state.knownRange = null;
-  state.t = 0;
   cam.auto = true;
-  $('scenario-note').textContent = scenario.note || 'Everything here is editable. Change a value and watch what it does.';
-  $('scenario-note').style.display = scenario.note ? '' : 'none';
+  $('scenario-note').textContent = scenario.note || '';
+  $('scenario-note').hidden = !scenario.note;
   buildFields();
+  buildChips();
+  unfire();
+}
+
+/** Back to "ready to fire": the path is drawn, nothing is moving, no readings. */
+function unfire() {
+  state.fired = false;
+  state.playing = false;
+  state.t = 0;
+  $('fire').textContent = 'Fire';
+  $('fire').dataset.state = 'ready';
+  $('fire-hint').textContent = 'The path is drawn. Press Fire to run it.';
+  $('play').disabled = true;
+  $('scrub').disabled = true;
   recompute();
 }
 
-/* ── control fields, with an explicit "not given" state ─────────────── */
+function fire() {
+  state.fired = true;
+  state.playing = true;
+  state.t = 0;
+  $('fire').textContent = 'Fire again';
+  $('fire').dataset.state = 'fired';
+  $('fire-hint').textContent = 'Drag the slider to move through the flight.';
+  $('play').disabled = false;
+  $('scrub').disabled = false;
+  setPlayIcon(true);
+  dirty = true;
+}
+
+/* ── fields ─────────────────────────────────────────────────────────── */
 function buildFields() {
   const root = $('fields');
   root.innerHTML = '';
 
   for (const fd of FIELDS) {
-    // A dropped object has no angle of projection, so do not pretend it does.
-    if (fd.key === 'theta' && scenario.noAngle) continue;
+    if (fd.key === 'theta' && scenario.noAngle) continue;   // a dropped object has no angle
+    const locked = fd.key === 'theta' && scenario.lockAngle;
 
     const wrap = document.createElement('div');
     wrap.className = 'field';
     wrap.dataset.unknown = String(state.unknown[fd.key]);
-
-    const locked = fd.key === 'theta' && scenario.lockAngle;
-
     wrap.innerHTML = `
-      <div class="f-head">
-        <span class="f-name">${fd.name}</span>
-        <span class="f-sym">${fd.sym}</span>
-      </div>
+      <div class="f-head"><span class="f-name">${fd.name}</span><span class="f-sym">${fd.sym}</span></div>
       <div class="f-row">
         <input class="f-num" type="number" step="${fd.step}" value="${round(state[fd.key], fd.step)}"
-               aria-label="${fd.name} in ${fd.unit}">
+               aria-label="${fd.name} in ${fd.unit}"${locked ? ' readonly' : ''}>
         <span class="f-unit">${fd.unit}</span>
-        ${locked ? '' : `<button class="f-unknown" aria-pressed="${state.unknown[fd.key]}">Not given</button>`}
       </div>
-      <input type="range" min="${fd.min}" max="${fd.max}" step="${fd.step}" value="${state[fd.key]}"
-             aria-label="${fd.name}" ${locked ? 'disabled' : ''}>
-      <div class="f-solved" hidden></div>`;
+      ${locked ? '' : `<button class="f-unknown" aria-pressed="${state.unknown[fd.key]}">I don’t know this</button>`}`;
 
     const num = wrap.querySelector('.f-num');
-    const rng = wrap.querySelector('input[type=range]');
-    const unk = wrap.querySelector('.f-unknown');
-
-    const set = (val, fromRange) => {
-      let v = parseFloat(val);
+    num.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
       if (!isFinite(v)) return;
-      v = Math.min(fd.max, Math.max(fd.min, v));
-      state[fd.key] = v;
-      if (fromRange) num.value = round(v, fd.step); else rng.value = v;
-      recompute();
-    };
-    rng.addEventListener('input', (e) => set(e.target.value, true));
-    num.addEventListener('input', (e) => set(e.target.value, false));
-    if (locked) num.readOnly = true;
-
-    unk?.addEventListener('click', () => {
-      state.unknown[fd.key] = !state.unknown[fd.key];
-      unk.setAttribute('aria-pressed', String(state.unknown[fd.key]));
-      wrap.dataset.unknown = String(state.unknown[fd.key]);
-      buildFields();
-      recompute();
+      state[fd.key] = Math.min(fd.max, Math.max(fd.min, v));
+      cam.auto = true;
+      unfire();
     });
-
+    wrap.querySelector('.f-unknown')?.addEventListener('click', () => {
+      state.unknown[fd.key] = !state.unknown[fd.key];
+      buildFields();
+      unfire();
+    });
     root.append(wrap);
   }
 
-  // When something is unknown, the usual way a paper lets you find it is by
-  // telling you where it lands. Offer exactly that, and nothing else.
-  const anyUnknown = Object.values(state.unknown).some(Boolean);
-  if (anyUnknown) {
+  if (Object.values(state.unknown).some(Boolean)) {
     const extra = document.createElement('div');
     extra.className = 'field';
     extra.innerHTML = `
@@ -147,7 +156,7 @@ function buildFields() {
     extra.querySelector('.f-num').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
       state.knownRange = isFinite(v) ? v : null;
-      recompute();
+      unfire();
     });
     root.append(extra);
   }
@@ -158,7 +167,6 @@ const round = (v, step) => {
   return Number(v).toFixed(dp);
 };
 
-/* ── g chips and show toggles ───────────────────────────────────────── */
 function buildChips() {
   $('g-chips').innerHTML = G_CHIPS
     .map((c) => `<button class="chip" data-g="${c.g}" aria-pressed="${Math.abs(c.g - state.g) < 1e-9}">${c.label}</button>`)
@@ -167,57 +175,59 @@ function buildChips() {
     b.addEventListener('click', () => {
       state.g = parseFloat(b.dataset.g);
       for (const x of $('g-chips').children) x.setAttribute('aria-pressed', String(x === b));
-      cam.auto = true; recompute();
+      cam.auto = true; unfire();
     });
   }
 }
 
-function buildShows() {
-  $('shows').innerHTML = SHOWS.map((s) => `
-    <label class="ck"${s.hue ? ` data-hue="${s.hue}"` : ''}>
-      <input type="checkbox" data-k="${s.key}"${state.show[s.key] ? ' checked' : ''}>
-      <span class="box"></span>${s.label}${s.hue ? '<span class="dash"></span>' : ''}
-    </label>`).join('');
-  for (const i of $('shows').querySelectorAll('input')) {
+function buildOptions() {
+  const mk = (list, store, after) => list.map((s) =>
+    `<label class="ck"><input type="checkbox" data-k="${s.key}"${store[s.key] ? ' checked' : ''}>
+     <span class="box-ck"></span>${s.label}</label>`).join('');
+  $('shows').innerHTML = mk(SHOWS, state.show);
+  $('extras').innerHTML = mk(EXTRAS, state.extras);
+  for (const i of $('shows').querySelectorAll('input'))
     i.addEventListener('change', () => { state.show[i.dataset.k] = i.checked; dirty = true; });
-  }
+  for (const i of $('extras').querySelectorAll('input'))
+    i.addEventListener('change', () => {
+      state.extras[i.dataset.k] = i.checked;
+      $('graphs-wrap').hidden = !state.extras.graphs;
+      $('working-wrap').hidden = !state.extras.working;
+      dirty = true;
+    });
 }
 
 /* ── compute ────────────────────────────────────────────────────────── */
 function recompute() {
-  derived = null;
   let u = state.u, theta = state.theta, h = state.h;
-
-  // Work out anything marked "not given", or say plainly that it cannot be.
   const msg = [];
+  let derived = null;
+
   if (state.unknown.u) {
     if (state.knownRange != null) {
       const r = speedFromRange(state.knownRange, theta, h, state.g);
-      if (r.ok) { u = r.u; derived = { key: 'u', value: u, how: `From a horizontal displacement of ${state.knownRange} m at ${fmt(theta, 1)}° from ${fmt(h, 1)} m.` }; }
+      if (r.ok) { u = r.u; derived = `Initial velocity worked out as ${fmt(u, 2)} m s⁻¹.`; }
       else msg.push(r.error);
-    } else msg.push('To find the initial velocity, give the horizontal displacement when it lands.');
+    } else msg.push('Give the horizontal displacement when it lands, and the initial velocity can be found from it.');
   }
   if (state.unknown.h) {
-    if (state.knownRange != null && Math.abs(Math.cos(theta * Math.PI / 180)) > 1e-9) {
-      const tt = state.knownRange / (u * Math.cos(theta * Math.PI / 180));
+    const c = Math.cos(theta * Math.PI / 180);
+    if (state.knownRange != null && Math.abs(c) > 1e-9) {
+      const tt = state.knownRange / (u * c);
       const hh = 0.5 * state.g * tt * tt - u * Math.sin(theta * Math.PI / 180) * tt;
-      if (hh >= 0) { h = hh; derived = { key: 'h', value: h, how: `From a horizontal displacement of ${state.knownRange} m.` }; }
+      if (hh >= 0) { h = hh; derived = `Launch height worked out as ${fmt(h, 2)} m.`; }
       else msg.push('No launch height above the ground fits those values.');
-    } else msg.push('To find the launch height, give the horizontal displacement when it lands.');
+    } else msg.push('Give the horizontal displacement when it lands, and the launch height can be found from it.');
   }
   if (state.unknown.theta) {
-    msg.push('The angle of projection cannot be found from the values given. Enter it, or give a different unknown.');
+    msg.push('The angle of projection cannot be found from these values alone. Enter it, or mark a different quantity as unknown.');
   }
 
   const dm = $('derive-msg');
-  if (dm) {
-    dm.textContent = derived ? `Worked out: ${fmt(derived.value, 2)} — ${derived.how}` : msg.join(' ');
-    dm.style.color = derived ? 'var(--accent-hi)' : 'var(--ink-muted)';
-  }
+  if (dm) { dm.textContent = derived || msg.join(' '); dm.style.color = derived ? 'var(--accent)' : 'var(--ink-muted)'; }
 
   f = flight({ u, theta: scenario.noAngle ? -90 : theta, h, g: state.g, azimuth: 0 });
   second = buildSecond(u, theta, h);
-  if (state.t > f.tMax) state.t = f.tMax;
   dirty = true;
 }
 
@@ -229,35 +239,30 @@ function buildSecond(u, theta, h) {
   return flight({ u: s.u, theta: s.theta, h: s.h, g: state.g });
 }
 
-/* ── readouts ───────────────────────────────────────────────────────── */
-function renderReadouts() {
+/* ── readout boxes ──────────────────────────────────────────────────── */
+function renderBoxes() {
+  const on = state.fired;
   const p = f.pos(state.t), v = f.vel(state.t);
-  const ro = (k, val, unit, hue) =>
-    `<div class="ro"${hue ? ` data-hue="${hue}"` : ''}><div class="ro-k">${k}</div><div class="ro-v">${val}<small>${unit}</small></div></div>`;
-
-  $('readouts').innerHTML = [
-    ro('Time', fmt(state.t, 2), 's'),
-    ro('Horizontal displacement', fmt(p.x, 1), 'm', 'disp'),
-    ro('Height', fmt(p.y, 1), 'm', 'disp'),
-    ro('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
-    '<div class="ro-sep"></div>',
-    ro('Time of flight', isFinite(f.tFlight) ? fmt(f.tFlight, 2) : '∞', 's'),
-    ro('Greatest height', fmt(f.apexHeight, 1), 'm'),
-    ro('Range', isFinite(f.tFlight) ? fmt(f.range, 1) : '∞', 'm'),
-    scenario.showOptimum ? ro('Best angle', fmt(optimumAngle(state.u, state.h, state.g), 1), '°') : '',
+  const box = (k, val, unit, hue) =>
+    `<div class="box"${hue ? ` data-hue="${hue}"` : ''} data-dim="${!on}">
+       <div class="box-k">${k}</div>
+       <div class="box-v">${on ? val : '—'}<small>${unit}</small></div>
+     </div>`;
+  $('boxes').innerHTML = [
+    box('Time elapsed', fmt(state.t, 2), 's'),
+    box('Height', fmt(p.y, 1), 'm', 'disp'),
+    box('Horizontal distance', fmt(p.x, 1), 'm', 'disp'),
+    box('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
   ].join('');
 }
 
-/* ── working panel ──────────────────────────────────────────────────── */
 function renderWorking() {
-  if (!state.working) return;
+  if (!state.extras.working) return;
   const parts = [];
-
   if (scenario.markers?.obstacle) {
     const c = obstacleCheck(f, scenario.markers.obstacle);
     parts.push(`<div class="verdict" data-ok="${c.ok}">${c.text}</div>`);
   }
-
   for (const s of buildWorking(f, state.t)) {
     parts.push(`<div class="step"><div class="step-h">${s.title}</div>` +
       s.rows.map((r) => `<div class="eq"><div class="eq-f">${r.f}</div><div class="eq-s">${r.s}</div>${r.r ? `<div class="eq-r">${r.r}</div>` : ''}</div>`).join('') +
@@ -269,17 +274,18 @@ function renderWorking() {
 /* ── loop ───────────────────────────────────────────────────────────── */
 function draw() {
   scene.render($('scene'), cam, {
-    flight: f, second, t: state.t, show: state.show,
+    flight: f, second, t: state.t, show: state.show, fired: state.fired,
     markers: scenario.markers || {}, scenario,
     secondDelay: scenario.second?.delay || 0,
     secondLabel: scenario.second?.label,
   });
-  const P = palette();
-  for (const spec of graphSpecs(f, state.t, P)) drawGraph($(spec.canvas), spec);
-  renderReadouts();
+  if (state.extras.graphs) {
+    const P = palette();
+    for (const spec of graphSpecs(f, state.t, P)) drawGraph($(spec.canvas), spec);
+  }
+  renderBoxes();
   renderWorking();
   $('scrub').value = f.tMax ? state.t / f.tMax : 0;
-  $('t-read').textContent = `t = ${fmt(state.t, 2)} s`;
   dirty = false;
 }
 
@@ -287,9 +293,9 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (state.playing) {
+  if (state.fired && state.playing) {
     state.t += dt;
-    if (state.t >= f.tMax) state.t = 0;
+    if (state.t >= f.tMax) { state.t = f.tMax; state.playing = false; setPlayIcon(false); }
     dirty = true;
   }
   if (dirty) draw();
@@ -297,12 +303,11 @@ function frame(now) {
 }
 
 /* ── chrome ─────────────────────────────────────────────────────────── */
-function setPlaying(on) {
-  state.playing = on;
-  $('play-icon').innerHTML = on
+function setPlayIcon(playing) {
+  $('play-icon').innerHTML = playing
     ? '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>'
     : '<path d="M8 5v14l11-7z"/>';
-  $('play').setAttribute('aria-label', on ? 'Pause' : 'Play');
+  $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
 }
 
 function applyTheme(mode) {
@@ -312,26 +317,33 @@ function applyTheme(mode) {
   dirty = true;
 }
 
-$('play').addEventListener('click', () => setPlaying(!state.playing));
-$('reset').addEventListener('click', () => { state.t = 0; cam.auto = true; dirty = true; });
+$('fire').addEventListener('click', () => (state.fired ? (state.t = 0, fire()) : fire()));
+$('play').addEventListener('click', () => {
+  if (!state.fired) return;
+  if (state.t >= f.tMax) state.t = 0;
+  state.playing = !state.playing; setPlayIcon(state.playing); dirty = true;
+});
+$('reset').addEventListener('click', () => { cam.auto = true; unfire(); });
 $('scrub').addEventListener('input', (e) => {
-  setPlaying(false); state.t = parseFloat(e.target.value) * f.tMax; dirty = true;
+  if (!state.fired) return;
+  state.playing = false; setPlayIcon(false);
+  state.t = parseFloat(e.target.value) * f.tMax; dirty = true;
 });
 $('theme-btn').addEventListener('click', () =>
   applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
-$('working-btn').addEventListener('click', () => {
-  state.working = !state.working;
-  $('working-btn').setAttribute('aria-pressed', String(state.working));
-  $('main').dataset.working = state.working ? 'on' : 'off';
+$('options-btn').addEventListener('click', () => {
+  state.options = !state.options;
+  $('options-btn').setAttribute('aria-pressed', String(state.options));
+  $('main').dataset.options = state.options ? 'on' : 'off';
   dirty = true;
 });
 
 document.addEventListener('keydown', (e) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-  if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
-  else if (e.key === 'ArrowRight') { setPlaying(false); state.t = Math.min(f.tMax, state.t + f.tMax / 60); dirty = true; }
-  else if (e.key === 'ArrowLeft')  { setPlaying(false); state.t = Math.max(0, state.t - f.tMax / 60); dirty = true; }
-  else if (e.key.toLowerCase() === 'r') { state.t = 0; dirty = true; }
+  if (e.code === 'Space') { e.preventDefault(); state.fired ? $('play').click() : fire(); }
+  else if (e.key === 'ArrowRight' && state.fired) { state.playing = false; setPlayIcon(false); state.t = Math.min(f.tMax, state.t + f.tMax / 60); dirty = true; }
+  else if (e.key === 'ArrowLeft' && state.fired)  { state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - f.tMax / 60); dirty = true; }
+  else if (e.key.toLowerCase() === 'r') { cam.auto = true; unfire(); }
 });
 
 addEventListener('resize', () => { dirty = true; });
@@ -340,13 +352,11 @@ scene.attachControls($('scene'), cam, () => { dirty = true; });
 /* ── boot ───────────────────────────────────────────────────────────── */
 let saved = null;
 try { saved = localStorage.getItem('suvat-theme'); } catch {}
-applyTheme(saved || 'dark');
+applyTheme(saved || 'light');          // light is the default
 buildPicker();
-buildChips();
-buildShows();
+buildOptions();
 loadScenario(state.id);
-setPlaying(true);
 requestAnimationFrame(frame);
 
-window.SUVAT = { state, get flight() { return f; }, cam, redraw() { recompute(); draw(); },
-                 load: loadScenario };
+window.SUVAT = { state, get flight() { return f; }, cam, load: loadScenario, fire,
+                 redraw() { recompute(); draw(); } };

@@ -33,7 +33,7 @@ function autoFit(cam, flights, markers, w, h) {
 }
 
 export function render(canvas, cam, o) {
-  const { flight: f, second, t, show, markers = {}, scenario } = o;
+  const { flight: f, second, t, show, markers = {}, scenario, fired = true } = o;
   const { ctx, w, h } = fitCanvas(canvas);
   const P = palette();
   const L = labels();
@@ -124,13 +124,20 @@ export function render(canvas, cam, o) {
   /* ── the path ─────────────────────────────────────────────────────── */
   const full = f.path(260);
   if (show.path) {
-    stroke(ctx, full.map(M), { color: P.faint, width: 1.5, dash: [3, 5] });
-    const flown = full.filter((p) => p.t <= t).concat([{ t, ...f.pos(t) }]);
-    stroke(ctx, flown.map(M), { color: P.vel, width: 3 });
+    if (!fired) {
+      // Before firing, the path is simply shown. One line, nothing else.
+      stroke(ctx, full.map(M), { color: P.vel, width: 2.6, alpha: 0.55 });
+    } else {
+      // A faint solid line for the part still to come — a dashed one here was
+      // just more texture on a diagram that already had too much.
+      stroke(ctx, full.map(M), { color: P.faint, width: 1.6 });
+      const flown = full.filter((p) => p.t <= t).concat([{ t, ...f.pos(t) }]);
+      stroke(ctx, flown.map(M), { color: P.vel, width: 3.2 });
+    }
   }
 
   /* ── markers at equal time steps ──────────────────────────────────── */
-  if (show.ticks) {
+  if (fired && show.ticks) {
     const n = scenario?.secondMarks ? Math.min(12, Math.max(2, Math.floor(f.tMax))) : 10;
     const marks = scenario?.secondMarks
       ? Array.from({ length: n + 1 }, (_, i) => ({ t: i, ...f.pos(i) })).filter((m) => m.t <= f.tMax)
@@ -149,8 +156,7 @@ export function render(canvas, cam, o) {
   /* ── greatest height and range ────────────────────────────────────── */
   if (show.apex && f.apexInFlight) {
     const a = M({ x: f.horiz * f.tApex, y: f.apexHeight });
-    stroke(ctx, [{ x: a.x, y: a.y }, { x: a.x, y: groundY }], { color: P.faint, width: 1.2, dash: [4, 4] });
-    dot(ctx, a.x, a.y, 4, { fill: P.ink });
+    dot(ctx, a.x, a.y, 4.5, { fill: P.ink });
     L.add(`greatest height ${fmt(f.apexHeight, 2)} m`, a.x, a.y - 22, { color: P.ink, align: 'center', pri: 8 });
   }
 
@@ -173,29 +179,29 @@ export function render(canvas, cam, o) {
   }
 
   /* ── the object, and its velocity now ─────────────────────────────── */
-  const now = f.pos(t), v = f.vel(t), p = M(now);
+  const now = f.pos(fired ? t : 0), v = f.vel(fired ? t : 0), p = M(now);
   const vScale = clamp(cam.scale * 0.5, 1.1, 7);
 
-  if (show.components) {
+  if (fired && show.components) {
     const hx = p.x + v.x * vScale, vy = p.y - v.y * vScale;
     arrow(ctx, p.x, p.y, hx, p.y, { color: P.vel, width: 1.8, head: 8, dash: [5, 4] });
     arrow(ctx, p.x, p.y, p.x, vy,  { color: P.vel, width: 1.8, head: 8, dash: [5, 4] });
     L.add(`horizontal ${fmt(v.x, 1)}`, hx + 8, p.y + 16, { color: P.vel, pri: 4, maxPush: 34 });
     L.add(`vertical ${fmt(v.y, 1)}`, p.x + 10, vy - 14, { color: P.vel, pri: 4, maxPush: 34 });
   }
-  if (show.velocity) {
+  if (fired && show.velocity) {
     const ex = p.x + v.x * vScale, ey = p.y - v.y * vScale;
     arrow(ctx, p.x, p.y, ex, ey, { color: P.vel, width: 3, head: 12 });
     L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, ex + 10, ey - 10, { color: P.vel, pri: 10, weight: 600 });
   }
-  if (show.acceleration && f.params.g > 0) {
+  if (fired && show.acceleration && f.params.g > 0) {
     const len = clamp(f.params.g * vScale * 0.5, 14, 60);
     arrow(ctx, p.x, p.y, p.x, p.y + len, { color: P.acc, width: 2.4, head: 10 });
     L.add(`g ${fmt(f.params.g, 2)} m s⁻²`, p.x - 10, p.y + len + 4, { color: P.acc, align: 'right', pri: 5 });
   }
 
-  dot(ctx, p.x, p.y, 7, { fill: P.vel });
-  dot(ctx, p.x, p.y, 12, { stroke: P.vel, width: 1.6 });
+  dot(ctx, p.x, p.y, fired ? 7 : 6, { fill: P.vel });
+  if (fired) dot(ctx, p.x, p.y, 12, { stroke: P.vel, width: 1.6 });
 
   /* ── launch point ─────────────────────────────────────────────────── */
   const lp = M({ x: 0, y: f.params.h });
