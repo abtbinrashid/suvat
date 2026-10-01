@@ -93,7 +93,9 @@ export function dot(ctx, x, y, r, { fill, stroke: st, width = 2 } = {}) {
    and placed in one pass; anything that cannot find clear space is dropped,
    because a missing label reads better than two printed on top of each other. */
 
-const MIN_SIZE = 13;
+// Canvas text ignores CSS, so the floor is enforced here. 13 was too small to
+// read on a 1100px canvas — and a teacher at the back of a room is the test.
+const MIN_SIZE = 15;
 const hits = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 export function labels() {
@@ -114,7 +116,7 @@ export function labels() {
 
         const align = o.align || 'left';
         const off = align === 'center' ? -tw / 2 : align === 'right' ? -tw : 0;
-        const bh = size + 8;
+        const bh = size + 10;
         let ax = it.x;
         const left = (a) => a + off - 5;
         if (left(ax) < 3) ax += 3 - left(ax);
@@ -124,7 +126,7 @@ export function labels() {
         const bias = o.push === 'down' ? 1 : -1;
         // A label that has to travel a long way to find space is no longer
         // attached to the thing it names, so some labels cap how far they move.
-        const ladder = [0, 17, 34, 51, 68].filter((d) => d <= (o.maxPush ?? Infinity));
+        const ladder = [0, 20, 40, 60, 80].filter((d) => d <= (o.maxPush ?? Infinity));
         outer:
         for (const step of ladder) {
           for (const d of (step === 0 ? [0] : [bias, -bias])) {

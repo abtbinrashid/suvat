@@ -7,7 +7,7 @@
 
 import { fitCanvas, palette, stroke, dot, fmt, niceStep, clamp, labels } from './util.js';
 
-const PAD = { l: 46, r: 14, t: 24, b: 30 };
+const PAD = { l: 52, r: 16, t: 28, b: 34 };
 
 export function drawGraph(canvas, spec) {
   const { ctx, w, h } = fitCanvas(canvas);
@@ -40,12 +40,12 @@ export function drawGraph(canvas, spec) {
   }
   ctx.stroke(); ctx.restore();
   for (let y = Math.ceil(lo / stepY) * stepY; y <= hi; y += stepY) {
-    L.add(fmt(y, stepY < 1 ? 1 : 0), PAD.l - 7, Y(y), { color: P.faint, align: 'right', pri: 1, bg: false });
+    L.add(fmt(y, stepY < 1 ? 1 : 0), PAD.l - 7, Y(y), { color: P.faint, align: 'right', pri: 1, bg: false, size: 15 });
   }
 
   const stepT = niceStep(tMax, 4);
   for (let tt = 0; tt <= tMax + 1e-9; tt += stepT) {
-    L.add(fmt(tt, stepT < 1 ? 1 : 0), X(tt), PAD.t + gh + 15, { color: P.faint, align: 'center', pri: 1, bg: false });
+    L.add(fmt(tt, stepT < 1 ? 1 : 0), X(tt), PAD.t + gh + 15, { color: P.faint, align: 'center', pri: 1, bg: false, size: 15 });
   }
 
   // zero line and axes
@@ -78,9 +78,9 @@ export function drawGraph(canvas, spec) {
     if (isFinite(y)) dot(ctx, cx, Y(y), 4, { fill: P.surface, stroke: s.color, width: 2.2 });
   }
 
-  L.add(title, PAD.l, 12, { color: P.ink, pri: 9, weight: 600 });
-  L.add(unit, w - 10, 12, { color: P.faint, align: 'right', pri: 8, bg: false });
-  if (shade) L.add(shade.label, PAD.l + gw - 4, PAD.t + 10, { color: P.muted, align: 'right', pri: 5 });
+  L.add(title, PAD.l, 14, { color: P.ink, pri: 9, weight: 600, size: 17 });
+  L.add(unit, w - 12, 14, { color: P.faint, align: 'right', pri: 8, bg: false, size: 15 });
+  if (shade) L.add(shade.label, PAD.l + gw - 4, PAD.t + 10, { color: P.muted, align: 'right', pri: 5, size: 15 });
   L.draw(ctx, w, h);
 }
 
