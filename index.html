@@ -18,12 +18,10 @@
 <div class="app">
   <header class="top">
     <div class="brand">SUVAT</div>
-
     <div class="pick">
       <label for="scenario">Scenario</label>
       <select id="scenario"></select>
     </div>
-
     <div class="top-right">
       <button class="tbtn" id="options-btn" aria-pressed="false">Options</button>
       <button class="tbtn" id="theme-btn">Dark</button>
@@ -32,25 +30,30 @@
 
   <div class="main" id="main" data-options="off">
 
-    <!-- ── values ──────────────────────────────────────────────────── -->
     <aside class="side" aria-label="Values">
       <p class="lede" id="scenario-note"></p>
 
       <div class="card">
+        <div class="card-h">Values</div>
+        <p class="card-sub">Fill in what the question gives you. Leave the rest blank — they will be worked out if they can be.</p>
         <div id="fields"></div>
+      </div>
 
-        <div class="field">
-          <div class="f-head"><span class="f-name">Gravitational field strength</span><span class="f-sym">g</span></div>
-          <div class="chips" id="g-chips"></div>
+      <div class="solve" id="solve-msg"></div>
+
+      <button class="fire" id="fire">Fire</button>
+      <p class="hint" id="fire-hint"></p>
+    </aside>
+
+    <section class="stage">
+      <div class="stage-bar">
+        <label class="ck inline"><input type="checkbox" id="bounce-ck"><span class="box-ck"></span>Bounce</label>
+        <div class="bounce-opts" id="bounce-opts" hidden>
+          <label class="mini" for="restitution">Coefficient of restitution <span id="rest-val">0.70</span></label>
+          <input type="range" id="restitution" min="0.1" max="0.95" step="0.05" value="0.7">
         </div>
       </div>
 
-      <button class="fire" id="fire">Fire</button>
-      <p class="hint" id="fire-hint">The path is drawn below. Press Fire to run it.</p>
-    </aside>
-
-    <!-- ── stage ───────────────────────────────────────────────────── -->
-    <section class="stage">
       <div class="canvas-wrap"><canvas id="scene" aria-label="Projectile motion"></canvas></div>
 
       <div class="boxes" id="boxes"></div>
@@ -64,23 +67,20 @@
       </div>
     </section>
 
-    <!-- ── options (closed by default) ─────────────────────────────── -->
     <aside class="opts" id="opts" aria-label="Options">
       <h2 class="otitle">Show on the diagram</h2>
       <div class="checks" id="shows"></div>
-
       <h2 class="otitle">Extras</h2>
       <div class="checks" id="extras"></div>
 
       <div id="graphs-wrap" hidden>
         <h2 class="otitle">Graphs</h2>
         <div class="graphs">
-          <div class="gcell"><canvas id="g-s" aria-label="Displacement against time"></canvas></div>
-          <div class="gcell"><canvas id="g-v" aria-label="Velocity against time"></canvas></div>
-          <div class="gcell"><canvas id="g-a" aria-label="Acceleration against time"></canvas></div>
+          <div class="gcell"><canvas id="g-s"></canvas></div>
+          <div class="gcell"><canvas id="g-v"></canvas></div>
+          <div class="gcell"><canvas id="g-a"></canvas></div>
         </div>
       </div>
-
       <div id="working-wrap" hidden>
         <h2 class="otitle">Working</h2>
         <div id="working"></div>

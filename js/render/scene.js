@@ -12,28 +12,39 @@ function autoFit(cam, flights, markers, w, h) {
   let maxX = 10, maxY = 5;
   for (const f of flights) {
     if (!f) continue;
-    maxX = Math.max(maxX, isFinite(f.range) ? f.range : f.horiz * f.tMax);
+    // Sample the real path: with bounces the object travels far past the
+    // first flight's range, and `range` only describes that first arc.
+    const end = f.pos(f.tMax);
+    maxX = Math.max(maxX, isFinite(end.x) ? end.x : f.horiz * f.tMax,
+                    isFinite(f.range) ? f.range : 0);
     maxY = Math.max(maxY, f.apexHeight, f.params.h);
   }
   if (markers?.obstacle) { maxX = Math.max(maxX, markers.obstacle.x * 1.15); maxY = Math.max(maxY, markers.obstacle.height); }
   if (markers?.target)   { maxX = Math.max(maxX, markers.target.x * 1.1);   maxY = Math.max(maxY, markers.target.y); }
-  if (markers?.heightLine) maxY = Math.max(maxY, markers.heightLine);
+  if (markers?.heightLine != null) maxY = Math.max(maxY, markers.heightLine);
 
   const spanX = maxX * 1.16 + 4;
   const spanY = maxY * 1.22 + 4;
   cam.scale = Math.max(0.02, Math.min((w - 96) / spanX, (h - 110) / spanY));
   cam.cx = maxX / 2;
 
-  // Do NOT centre the content vertically. Nothing in this model goes below the
-  // ground, so centring leaves a third of the canvas empty under it. Pin the
-  // ground a fixed distance from the bottom instead and let every spare pixel
-  // go above, which is where the trajectory actually is.
-  const BOTTOM = 78;                      // room for the range bar and axis numbers
-  cam.cy = (h / 2 - BOTTOM) / cam.scale;
+  // Where the ground sits depends on how tall the flight actually is.
+  //
+  // A tall trajectory should be pinned near the bottom: nothing in this model
+  // goes below the ground, so centring would waste a third of the canvas.
+  // A wide, flat one — a bouncing ball especially — is the opposite case: pin
+  // it low and the whole thing hugs the bottom edge under an empty sky. So the
+  // ground is placed to centre the content, then clamped so it never sits
+  // closer to the bottom than the range bar needs.
+  const BOTTOM = 86;                      // room for the range bar and axis numbers
+  const contentPx = maxY * cam.scale;
+  const groundY = Math.min(h - BOTTOM, h / 2 + contentPx / 2);
+  cam.cy = (groundY - h / 2) / cam.scale;
 }
 
 export function render(canvas, cam, o) {
-  const { flight: f, second, t, show, markers = {}, scenario, fired = true } = o;
+  const { traj: f, second, ghost, t, show, markers = {}, scenario, fired = true } = o;
+  if (!f) { return null; }
   const { ctx, w, h } = fitCanvas(canvas);
   const P = palette();
   const L = labels();
@@ -81,9 +92,11 @@ export function render(canvas, cam, o) {
   if (markers.heightLine != null) {
     const Y = sy(markers.heightLine);
     stroke(ctx, [{ x: 0, y: Y }, { x: w, y: Y }], { color: P.disp, width: 1.5, dash: [7, 5], alpha: .85 });
-    L.add(`${fmt(markers.heightLine, 1)} m`, w - 10, Y, { color: P.disp, align: 'right', pri: 6, size: 17 });
+    L.add(`${fmt(markers.heightLine, 1)} m${fired ? '' : ' — drag me'}`, w - 12, Y,
+          { color: P.disp, align: 'right', pri: 6, size: 17 });
+    dot(ctx, 40, Y, 8, { fill: P.surface, stroke: P.disp, width: 3 });
 
-    const band = timeAbove(f, markers.heightLine);
+    const band = fired ? timeAbove(f, markers.heightLine) : null;
     if (band) {
       ctx.save(); ctx.globalAlpha = .1; ctx.fillStyle = P.disp;
       ctx.fillRect(sx(f.horiz * band.t1), sy(f.apexHeight), (band.t2 - band.t1) * f.horiz * cam.scale, sy(markers.heightLine) - sy(f.apexHeight));
@@ -95,17 +108,22 @@ export function render(canvas, cam, o) {
 
   if (markers.obstacle) {
     const X = sx(markers.obstacle.x), Yt = sy(markers.obstacle.height);
-    stroke(ctx, [{ x: X, y: groundY }, { x: X, y: Yt }], { color: P.strong, width: 5 });
+    stroke(ctx, [{ x: X, y: groundY }, { x: X, y: Yt }], { color: P.strong, width: 6 });
+    dot(ctx, X, Yt, 7, { fill: P.surface, stroke: P.strong, width: 2.5 });
     const clears = clearsObstacle(f, markers.obstacle);
-    L.add(clears ? 'clears it' : 'hits it', X, Yt - 20,
-          { color: clears ? P.good : P.bad, align: 'center', pri: 9, weight: 600, size: 19 });
+    if (!fired) L.add('drag me', X, Yt - 26, { color: P.muted, align: 'center', pri: 5, size: 16 });
+    else L.add(clears ? 'clears it' : 'hits it', X, Yt - 26,
+      { color: clears ? P.good : P.bad, align: 'center', pri: 9, weight: 600, size: 19 });
   }
 
   if (markers.target) {
     const p = M(markers.target);
-    dot(ctx, p.x, p.y, 7, { stroke: P.disp, width: 2.5 });
-    dot(ctx, p.x, p.y, 2.5, { fill: P.disp });
-    L.add('target', p.x, p.y - 24, { color: P.disp, align: 'center', pri: 6, size: 17 });
+    const hit = fired ? passesThrough(f, markers.target) : null;
+    const col = hit == null ? P.disp : hit ? P.good : P.disp;
+    dot(ctx, p.x, p.y, 13, { stroke: col, width: 3 });
+    dot(ctx, p.x, p.y, 4, { fill: col });
+    L.add(hit == null ? 'target — drag me' : hit ? 'hit' : 'missed',
+          p.x, p.y - 28, { color: hit ? P.good : col, align: 'center', pri: 9, size: 18, weight: 600 });
   }
 
   /* ── second object ────────────────────────────────────────────────── */
@@ -122,18 +140,17 @@ export function render(canvas, cam, o) {
   }
 
   /* ── the path ─────────────────────────────────────────────────────── */
-  const full = f.path(260);
-  if (show.path) {
-    if (!fired) {
-      // Before firing, the path is simply shown. One line, nothing else.
-      stroke(ctx, full.map(M), { color: P.vel, width: 3, alpha: 0.6 });
-    } else {
-      // A faint solid line for the part still to come — a dashed one here was
-      // just more texture on a diagram that already had too much.
-      stroke(ctx, full.map(M), { color: P.faint, width: 2 });
-      const flown = full.filter((p) => p.t <= t).concat([{ t, ...f.pos(t) }]);
-      stroke(ctx, flown.map(M), { color: P.vel, width: 3.8 });
-    }
+  // The previous run, if there was one. This is the only path ever drawn
+  // ahead of the object, and it only exists from the second fire onwards.
+  if (ghost && show.path) {
+    stroke(ctx, ghost.map(M), { color: P.faint, width: 2 });
+  }
+
+  // The path is TRACED behind the object as it goes. Nothing is drawn ahead of
+  // it, so the student watches the shape appear rather than reading it off.
+  if (show.path && fired) {
+    const flown = f.path(260, t).concat([{ t, ...f.pos(t) }]);
+    stroke(ctx, flown.map(M), { color: P.vel, width: 3.8 });
   }
 
   /* ── markers at equal time steps ──────────────────────────────────── */
@@ -212,6 +229,7 @@ export function render(canvas, cam, o) {
   dot(ctx, lp.x, lp.y, 3.5, { fill: P.strong });
 
   L.draw(ctx, w, h);
+  cam._map = { sx, sy, px, py };
   return { sx, sy };
 }
 
@@ -235,6 +253,17 @@ function clearsObstacle(f, ob) {
   return f.pos(t).y > ob.height;
 }
 
+/** Does the path pass within a small radius of the target? */
+function passesThrough(f, target) {
+  const tol = Math.max(0.6, target.x * 0.02);
+  let best = Infinity;
+  for (let i = 0; i <= 400; i++) {
+    const p = f.pos((i / 400) * f.tMax);
+    best = Math.min(best, Math.hypot(p.x - target.x, p.y - target.y));
+  }
+  return best <= tol;
+}
+
 /** The instant the velocity is perpendicular to the launch velocity: u·v = 0. */
 function perpendicularTime(f) {
   const { g } = f.params;
@@ -243,13 +272,42 @@ function perpendicularTime(f) {
   return t > 0 ? t : null;
 }
 
-export function attachControls(canvas, cam, onChange) {
-  let drag = false, lx = 0, ly = 0;
+export function attachControls(canvas, cam, onChange, getScene, onMarkerMove) {
+  let drag = false, lx = 0, ly = 0, dragging = null;
+
+  const toWorld = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const m = cam._map;
+    if (!m) return null;
+    return { x: m.px(e.clientX - r.left), y: m.py(e.clientY - r.top), sxp: e.clientX - r.left, syp: e.clientY - r.top };
+  };
+
+  /** Which draggable handle, if any, is under the pointer. */
+  const pick = (e) => {
+    if (!getScene) return null;
+    const { markers, scenario } = getScene() || {};
+    const m = cam._map;
+    if (!markers || !m) return null;
+    const w = toWorld(e);
+    const near = (px, py) => Math.hypot(w.sxp - px, w.syp - py) < 24;
+    if (scenario?.dragTarget && markers.target && near(m.sx(markers.target.x), m.sy(markers.target.y))) return 'target';
+    if (scenario?.dragObstacle && markers.obstacle && near(m.sx(markers.obstacle.x), m.sy(markers.obstacle.height))) return 'obstacle';
+    if (scenario?.dragLine && markers.heightLine != null && Math.abs(w.syp - m.sy(markers.heightLine)) < 18) return 'heightLine';
+    return null;
+  };
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag && !dragging) { canvas.style.cursor = pick(e) ? 'grab' : 'grab'; }
+  });
+
   canvas.addEventListener('pointerdown', (e) => {
+    dragging = pick(e);
+    if (dragging) { canvas.setPointerCapture(e.pointerId); canvas.style.cursor = 'grabbing'; return; }
     drag = true; lx = e.clientX; ly = e.clientY;
     canvas.setPointerCapture(e.pointerId); canvas.style.cursor = 'grabbing';
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (dragging) { const w = toWorld(e); if (w && onMarkerMove) onMarkerMove(dragging, w); return; }
     if (!drag) return;
     cam.auto = false;
     cam.cx -= (e.clientX - lx) / cam.scale;
@@ -257,7 +315,7 @@ export function attachControls(canvas, cam, onChange) {
     lx = e.clientX; ly = e.clientY; onChange();
   });
   const end = (e) => {
-    drag = false; canvas.style.cursor = 'grab';
+    drag = false; dragging = null; canvas.style.cursor = 'grab';
     if (e && canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
   };
   canvas.addEventListener('pointerup', end);
