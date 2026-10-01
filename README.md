@@ -42,25 +42,46 @@ what you don't know, rearranges it, substitutes, and shows every step. Where a
 **Reference** — the five equations, when each applies, and the projectile
 results derived from them.
 
-## Status
-
-The **physics engine is finished and tested**. The interface is being redesigned
-from scratch.
+## Running it locally
 
 ```bash
-node test/engine.test.mjs     # 26 checks against hand-worked A-level answers
+node dev-server.mjs
+```
+
+Then open http://localhost:4173. No build step, no dependencies — HTML, CSS and
+ES modules.
+
+```bash
+node test/engine.test.mjs      # 26 checks on the physics
+node test/question.test.mjs    # 36 checks on the question reader
 ```
 
 ## Layout
 
 ```
-js/core/suvat.js       the five equations + a solver that shows its working
-js/core/projectile.js  the idealised projectile model
-test/engine.test.mjs   hand-worked answers that prove the above
+index.html              one screen; the scenario picker is a dropdown
+css/tokens.css          design system — colours, type, spacing
+css/app.css             laptop-first three-column layout
+js/scenarios.js         all 26 scenarios, as data
+js/working.js           the working out, with real numbers substituted
+js/core/suvat.js        the five equations and a solver that shows its working
+js/core/projectile.js   the idealised projectile model
+js/core/question.js     exam question -> engine parameters
+js/render/             the scene, the graphs, canvas helpers
+worker/                 Cloudflare Worker for reading a photo of a question
+design/                 tokens, scenario research, preset list
 ```
 
-The previous interface is preserved in commit `4723636` if any of it is wanted
-back.
+Three rules worth knowing before editing:
+
+1. **Colour is the quantity, dash is the direction.** Velocity, displacement and
+   acceleration each have a hue; horizontal components are dashed and vertical
+   ones solid. The three hues are validated for colour blindness — see
+   `design/theme.js` before changing any of them.
+2. **13px is the floor**, canvas labels included. Canvas text ignores CSS, so
+   it is enforced by hand in `js/render/util.js`.
+3. **The engine calculates; nothing else does.** The working panel and the
+   question reader both display what `js/core/` computed.
 
 ## Credits
 
