@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SUVAT — projectile motion for A-level</title>
-<meta name="description" content="An interactive projectile motion playground for A-level Physics and Maths. The idealised model: no air resistance, no wind, uniform g.">
+<meta name="description" content="Enter the SUVAT values, launch, and watch the motion they describe. The idealised A-level model: no air resistance, no wind, uniform g.">
 <meta name="color-scheme" content="light dark">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,78 +15,104 @@
 </head>
 <body>
 
-<div class="app">
+<div class="app" id="app" data-step="scenario">
+
   <header class="top">
-    <div class="brand">SUVAT</div>
-    <div class="pick">
-      <label for="scenario">Scenario</label>
-      <select id="scenario"></select>
-    </div>
+    <button class="brand" id="brand">SUVAT</button>
+    <ol class="steps" id="steps">
+      <li data-s="scenario"><span>1</span>Scenario</li>
+      <li data-s="values"><span>2</span>Values</li>
+      <li data-s="flight"><span>3</span>Flight</li>
+    </ol>
     <div class="top-right">
-      <button class="tbtn" id="options-btn" aria-pressed="false">Options</button>
+      <button class="tbtn" id="options-btn" aria-pressed="false" hidden>Options</button>
       <button class="tbtn" id="theme-btn">Dark</button>
     </div>
   </header>
 
-  <div class="main" id="main" data-options="off">
+  <!-- ── 1 · scenario ─────────────────────────────────────────────── -->
+  <main class="screen" id="screen-scenario">
+    <div class="centre">
+      <h1 class="h-big">What is the object doing?</h1>
+      <p class="h-sub">Every situation below is the same five equations. Pick the one your question describes.</p>
+      <div class="pgrid" id="pgrid"></div>
+    </div>
+  </main>
 
-    <aside class="side" aria-label="Values">
-      <p class="lede" id="scenario-note"></p>
+  <!-- ── 2 · values ───────────────────────────────────────────────── -->
+  <main class="screen" id="screen-values">
+    <div class="centre narrow">
+      <p class="eyebrow" id="chosen"></p>
+      <h1 class="h-big">s u v a t</h1>
+      <p class="h-sub">Fill in what the question gives you. Leave the rest blank — anything that can be worked out, will be.</p>
 
-      <div class="card">
-        <div class="card-h">Values</div>
-        <p class="card-sub">Fill in what the question gives you. Leave the rest blank — they will be worked out if they can be.</p>
-        <div id="fields"></div>
-      </div>
+      <div class="suvat" id="suvat"></div>
+
+      <div class="extra" id="extra"></div>
 
       <div class="solve" id="solve-msg"></div>
 
-      <button class="fire" id="fire">Fire</button>
-      <p class="hint" id="fire-hint"></p>
-    </aside>
+      <div class="actions">
+        <button class="ghost" id="back-1">Back</button>
+        <button class="fire" id="launch">Launch</button>
+      </div>
+      <p class="hint" id="launch-hint"></p>
+    </div>
+  </main>
 
-    <section class="stage">
-      <div class="stage-bar">
-        <label class="ck inline"><input type="checkbox" id="bounce-ck"><span class="box-ck"></span>Bounce</label>
-        <div class="bounce-opts" id="bounce-opts" hidden>
-          <label class="mini" for="restitution">Coefficient of restitution <span id="rest-val">0.70</span></label>
-          <input type="range" id="restitution" min="0.1" max="0.95" step="0.05" value="0.7">
+  <!-- ── 3 · flight ───────────────────────────────────────────────── -->
+  <main class="screen" id="screen-flight">
+    <div class="main" id="main" data-options="off">
+      <section class="stage">
+        <div class="stage-bar">
+          <button class="ghost sm" id="back-2">Change values</button>
+          <div class="seg" id="dim-seg">
+            <button data-dim="2d" aria-pressed="true">2D</button>
+            <button data-dim="3d" aria-pressed="false">3D</button>
+          </div>
+          <label class="ck inline"><input type="checkbox" id="bounce-ck"><span class="box-ck"></span>Bounce</label>
+          <div class="bounce-opts" id="bounce-opts" hidden>
+            <span class="mini">restitution <b id="rest-val">0.70</b></span>
+            <input type="range" id="restitution" min="0.1" max="0.95" step="0.05" value="0.7">
+          </div>
         </div>
-      </div>
 
-      <div class="canvas-wrap"><canvas id="scene" aria-label="Projectile motion"></canvas></div>
-
-      <div class="boxes" id="boxes"></div>
-
-      <div class="transport">
-        <button class="play" id="play" aria-label="Play" disabled>
-          <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Time" disabled>
-        <button class="tbtn" id="reset">Reset</button>
-      </div>
-    </section>
-
-    <aside class="opts" id="opts" aria-label="Options">
-      <h2 class="otitle">Show on the diagram</h2>
-      <div class="checks" id="shows"></div>
-      <h2 class="otitle">Extras</h2>
-      <div class="checks" id="extras"></div>
-
-      <div id="graphs-wrap" hidden>
-        <h2 class="otitle">Graphs</h2>
-        <div class="graphs">
-          <div class="gcell"><canvas id="g-s"></canvas></div>
-          <div class="gcell"><canvas id="g-v"></canvas></div>
-          <div class="gcell"><canvas id="g-a"></canvas></div>
+        <div class="canvas-wrap">
+          <canvas id="scene" aria-label="Projectile motion"></canvas>
+          <div class="hud hud-l" id="hud-left"></div>
+          <div class="hud hud-r" id="hud-right"></div>
         </div>
-      </div>
-      <div id="working-wrap" hidden>
-        <h2 class="otitle">Working</h2>
-        <div id="working"></div>
-      </div>
-    </aside>
-  </div>
+
+        <div class="transport">
+          <button class="play" id="play" aria-label="Play">
+            <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Time">
+          <button class="tbtn" id="replay">Replay</button>
+        </div>
+      </section>
+
+      <aside class="opts" id="opts" aria-label="Options">
+        <h2 class="otitle">Show on the diagram</h2>
+        <div class="checks" id="shows"></div>
+        <h2 class="otitle">Extras</h2>
+        <div class="checks" id="extras"></div>
+        <div id="graphs-wrap" hidden>
+          <h2 class="otitle">Graphs</h2>
+          <div class="graphs">
+            <div class="gcell"><canvas id="g-s"></canvas></div>
+            <div class="gcell"><canvas id="g-v"></canvas></div>
+            <div class="gcell"><canvas id="g-a"></canvas></div>
+          </div>
+        </div>
+        <div id="working-wrap" hidden>
+          <h2 class="otitle">Working</h2>
+          <div id="working"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
 </div>
 
 <script type="module" src="./js/app.js"></script>

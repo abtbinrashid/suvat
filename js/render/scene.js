@@ -5,6 +5,9 @@
 // components share their quantity's hue and are told apart by a dashed stroke.
 
 import { fitCanvas, palette, stroke, arrow, dot, fmt, niceStep, clamp, labels } from './util.js';
+import { drawGrid2D, drawGrid3D, makeView3D, createCamera3D, fit3D } from './grid.js';
+
+export { createCamera3D };
 
 export function createCamera() { return { cx: 0, cy: 0, scale: 10, auto: true }; }
 
@@ -58,29 +61,7 @@ export function render(canvas, cam, o) {
   const M = (p) => ({ x: sx(p.x), y: sy(p.y) });
   const groundY = sy(0);
 
-  /* ── grid ─────────────────────────────────────────────────────────── */
-  if (show.grid) {
-    const stepX = niceStep(w / cam.scale, 9);
-    const stepY = niceStep(h / cam.scale, 6);
-    ctx.save(); ctx.strokeStyle = P.grid; ctx.lineWidth = 1; ctx.beginPath();
-    for (let x = Math.floor(px(0) / stepX) * stepX; x <= px(w); x += stepX) {
-      const X = Math.round(sx(x)) + 0.5; ctx.moveTo(X, 0); ctx.lineTo(X, h);
-    }
-    for (let y = Math.floor(py(h) / stepY) * stepY; y <= py(0); y += stepY) {
-      const Y = Math.round(sy(y)) + 0.5; ctx.moveTo(0, Y); ctx.lineTo(w, Y);
-    }
-    ctx.stroke(); ctx.restore();
-
-    for (let x = Math.floor(px(0) / stepX) * stepX; x <= px(w); x += stepX) {
-      if (Math.abs(x) < 1e-9 || sx(x) < 30 || sx(x) > w - 24) continue;
-      L.add(fmt(x, stepX < 1 ? 1 : 0), sx(x), Math.min(h - 12, groundY + 18),
-            { color: P.faint, align: 'center', pri: -1, bg: false, size: 15 });
-    }
-    for (let y = Math.floor(py(h) / stepY) * stepY; y <= py(0); y += stepY) {
-      if (Math.abs(y) < 1e-9 || sy(y) < 16 || sy(y) > h - 16) continue;
-      L.add(fmt(y, stepY < 1 ? 1 : 0), 8, sy(y), { color: P.faint, pri: -1, bg: false, size: 15 });
-    }
-  }
+  if (show.grid) drawGrid2D(ctx, P, L, { w, h, sx, sy, px, py, cam });
 
   /* ── ground ───────────────────────────────────────────────────────── */
   ctx.save();
@@ -91,18 +72,18 @@ export function render(canvas, cam, o) {
   /* ── height line, fence, target ───────────────────────────────────── */
   if (markers.heightLine != null) {
     const Y = sy(markers.heightLine);
-    stroke(ctx, [{ x: 0, y: Y }, { x: w, y: Y }], { color: P.disp, width: 1.5, dash: [7, 5], alpha: .85 });
+    stroke(ctx, [{ x: 0, y: Y }, { x: w, y: Y }], { color: P.mark, width: 2, dash: [8, 6], alpha: .9 });
     L.add(`${fmt(markers.heightLine, 1)} m${fired ? '' : ' — drag me'}`, w - 12, Y,
-          { color: P.disp, align: 'right', pri: 6, size: 17 });
-    dot(ctx, 40, Y, 8, { fill: P.surface, stroke: P.disp, width: 3 });
+          { color: P.mark, align: 'right', pri: 6, size: 17 });
+    dot(ctx, 40, Y, 8, { fill: P.surface, stroke: P.mark, width: 3 });
 
     const band = fired ? timeAbove(f, markers.heightLine) : null;
     if (band) {
-      ctx.save(); ctx.globalAlpha = .1; ctx.fillStyle = P.disp;
+      ctx.save(); ctx.globalAlpha = .12; ctx.fillStyle = P.mark;
       ctx.fillRect(sx(f.horiz * band.t1), sy(f.apexHeight), (band.t2 - band.t1) * f.horiz * cam.scale, sy(markers.heightLine) - sy(f.apexHeight));
       ctx.restore();
       L.add(`above for ${fmt(band.t2 - band.t1, 2)} s`, sx(f.horiz * (band.t1 + band.t2) / 2), sy(markers.heightLine) - 24,
-            { color: P.disp, align: 'center', pri: 7, size: 18 });
+            { color: P.mark, align: 'center', pri: 7, size: 18 });
     }
   }
 
@@ -119,7 +100,7 @@ export function render(canvas, cam, o) {
   if (markers.target) {
     const p = M(markers.target);
     const hit = fired ? passesThrough(f, markers.target) : null;
-    const col = hit == null ? P.disp : hit ? P.good : P.disp;
+    const col = hit == null ? P.mark : hit ? P.good : P.mark;
     dot(ctx, p.x, p.y, 13, { stroke: col, width: 3 });
     dot(ctx, p.x, p.y, 4, { fill: col });
     L.add(hit == null ? 'target — drag me' : hit ? 'hit' : 'missed',
@@ -129,14 +110,14 @@ export function render(canvas, cam, o) {
   /* ── second object ────────────────────────────────────────────────── */
   if (second) {
     const delay = o.secondDelay || 0;
-    stroke(ctx, second.path(200).map(M), { color: P.muted, width: 2, dash: [6, 5], alpha: .8 });
+    stroke(ctx, second.path(200).map(M), { color: P.second, width: 2.6, dash: [8, 5], alpha: .9 });
     const t2 = clamp(t - delay, 0, second.tMax);
     if (t >= delay) {
       const q = M(second.pos(t2));
-      dot(ctx, q.x, q.y, 6, { fill: P.muted });
+      dot(ctx, q.x, q.y, 7, { fill: P.second });
     }
     L.add(o.secondLabel || 'second object', sx(second.range), sy(0) - 22,
-          { color: P.muted, align: 'center', pri: 3, size: 17 });
+          { color: P.second, align: 'center', pri: 3, size: 17 });
   }
 
   /* ── the path ─────────────────────────────────────────────────────── */
@@ -213,7 +194,7 @@ export function render(canvas, cam, o) {
   }
   if (fired && show.acceleration && f.params.g > 0) {
     const len = clamp(f.params.g * vScale * 0.5, 14, 60);
-    arrow(ctx, p.x, p.y, p.x, p.y + len, { color: P.acc, width: 2.4, head: 10 });
+    arrow(ctx, p.x, p.y, p.x, p.y + len, { color: P.acc, width: 2.8, head: 11 });
     L.add(`g ${fmt(f.params.g, 2)} m s⁻²`, p.x - 10, p.y + len + 4, { color: P.acc, align: 'right', pri: 5, size: 17 });
   }
 

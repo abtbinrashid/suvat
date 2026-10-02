@@ -33,17 +33,31 @@
   --accent-soft: rgba(234,88,12,0.14);
   --on-accent: #131210;
 
-  /* the three physics hues — validated; do not change without re-running the
-     colour-blindness check documented in design/theme.js */
-  --vel: #ea580c;        /* velocity */
-  --disp: #0d9488;       /* displacement */
-  --acc: #8b5cf6;        /* acceleration */
+  /* ── the physics palette ────────────────────────────────────────────
+     Five hues across the spectrum, assigned in this fixed order. Validated
+     all together under protanopia, deuteranopia and tritanopia:
+       worst adjacent pair  magenta <-> cyan   dE 10.3   (floor 8)
+       normal vision        violet  <-> magenta dE 26.4  (floor 15)
+       lightness, chroma and contrast all inside band
+     The order matters — it is what keeps the weakest pair (green/magenta)
+     from ever being neighbours. Re-run the check before changing any of them.
+
+     Velocity, displacement and acceleration take the three best-separated
+     hues because they appear side by side. Magenta and green go to the second
+     object and to markers, which rarely sit next to each other. */
+  --vel:    #ea580c;     /* velocity          — orange  */
+  --disp:   #0891b2;     /* displacement      — cyan    */
+  --acc:    #7c3aed;     /* acceleration      — violet  */
+  --second: #db2777;     /* a second object   — magenta */
+  --mark:   #16a34a;     /* targets, fences, lines — green */
 
   --good: #34d399; --good-fill: rgba(52,211,153,0.15);
   --bad:  #fb7185; --bad-fill:  rgba(251,113,133,0.15);
 
-  --grid: rgba(255,255,255,0.07);
-  --axis: rgba(255,255,255,0.22);
+  /* The grid is meant to be READ, not merely sensed. 7% was invisible. */
+  --grid:       rgba(255,255,255,0.13);
+  --grid-major: rgba(255,255,255,0.26);
+  --axis:       rgba(255,255,255,0.45);
   --shadow: none;
 }
 
@@ -66,11 +80,16 @@
   --accent-soft: rgba(194,65,12,0.10);
   --on-accent: #ffffff;
 
-  --vel: #c2410c; --disp: #0f766e; --acc: #7c3aed;
+  --vel:    #c2410c;
+  --disp:   #0891b2;
+  --acc:    #6d28d9;
+  --second: #be185d;
+  --mark:   #15803d;
   --good: #047857; --good-fill: rgba(52,211,153,0.18);
   --bad:  #be123c; --bad-fill:  rgba(251,113,133,0.18);
 
-  --grid: rgba(26,23,20,0.06);
-  --axis: rgba(26,23,20,0.28);
+  --grid:       rgba(26,23,20,0.11);
+  --grid-major: rgba(26,23,20,0.22);
+  --axis:       rgba(26,23,20,0.45);
   --shadow: 0 1px 2px rgba(26,23,20,0.045);
 }

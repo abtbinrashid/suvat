@@ -1,30 +1,29 @@
-// app.js — state and wiring.
+// app.js — three screens, in order: scenario, values, flight.
 //
-// The order is deliberate. The student picks a scenario, fills in whatever the
-// question gave them, and the engine works out the rest. Fire only becomes
-// available once the launch is actually determined; until then it says why not.
+// The whole app is SUVAT. Screen two asks for the five quantities and nothing
+// else beyond what the chosen situation genuinely needs. Launch stays disabled
+// until the engine can actually determine the motion, and says why not.
 
 import { solveLaunch } from './core/solve.js';
 import { trajectory } from './core/trajectory.js';
 import { flight } from './core/projectile.js';
-import { SCENARIOS, GROUPS, GRAVITY, byId, DEFAULT_SCENARIO } from './scenarios.js';
+import { SCENARIOS, GROUPS, GRAVITY, byId } from './scenarios.js';
 import { buildWorking, obstacleCheck } from './working.js';
 import * as scene from './render/scene.js';
+import * as scene3d from './render/scene3d.js';
+import { createCamera3D } from './render/grid.js';
 import { drawGraph, graphSpecs } from './render/graphs.js';
 import { fmt, palette } from './render/util.js';
 
 const $ = (id) => document.getElementById(id);
 
-/* Every SUVAT quantity is a field. Blank means "not given". */
-const FIELDS = [
-  { key: 'u',     name: 'Initial velocity',        sym: 'u', unit: 'm s⁻¹' },
-  { key: 'v',     name: 'Speed when it lands',     sym: 'v', unit: 'm s⁻¹' },
-  { key: 'theta', name: 'Angle of projection',     sym: 'θ', unit: '°' },
-  { key: 'h',     name: 'Launch height',           sym: 'h', unit: 'm' },
-  { key: 's',     name: 'Horizontal displacement', sym: 's', unit: 'm' },
-  { key: 't',     name: 'Time of flight',          sym: 't', unit: 's' },
-  { key: 'g',     name: 'Acceleration',            sym: 'a', unit: 'm s⁻²', chips: true },
-  { key: 'mass',  name: 'Mass',                    sym: 'm', unit: 'kg' },
+/* The five. Everything else is scenario-specific and shown only when needed. */
+const SUVAT = [
+  { k: 's', sym: 's', name: 'displacement',     unit: 'm' },
+  { k: 'u', sym: 'u', name: 'initial velocity', unit: 'm s⁻¹' },
+  { k: 'v', sym: 'v', name: 'final velocity',   unit: 'm s⁻¹' },
+  { k: 'g', sym: 'a', name: 'acceleration',     unit: 'm s⁻²' },
+  { k: 't', sym: 't', name: 'time',             unit: 's' },
 ];
 
 const SHOWS = [
@@ -42,235 +41,217 @@ const EXTRAS = [
 ];
 
 const state = {
-  id: DEFAULT_SCENARIO,
-  given: {},                       // what the student typed; blank = unknown
-  mass: 1,
+  step: 'scenario', id: null,
+  given: {}, mass: 1,
   bounce: false, restitution: 0.7,
-  t: 0, fired: false, playing: false, firedBefore: false,
-  show: { path: true, velocity: true, apex: true, range: true,
-          components: false, ticks: false, grid: false, acceleration: false },
+  dim: '2d', t: 0, playing: false, launched: false, firedBefore: false,
+  show: { path: true, velocity: true, apex: true, range: true, grid: true,
+          components: false, ticks: false, acceleration: false },
   extras: { graphs: false, working: false, energy: false },
   options: false,
 };
 
 const cam = scene.createCamera();
+const cam3 = createCamera3D();
 let scenario = null, solved = null, traj = null, second = null, ghost = null, dirty = true;
 
-/* ── scenario ───────────────────────────────────────────────────────── */
-function buildPicker() {
-  const sel = $('scenario');
-  sel.innerHTML = GROUPS.map((g) => {
-    const items = SCENARIOS.filter((s) => s.group === g.id)
-      .map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
-    return `<optgroup label="${g.label}">${items}</optgroup>`;
+/* ── step 1 · scenario ──────────────────────────────────────────────── */
+function buildScenarioScreen() {
+  $('pgrid').innerHTML = GROUPS.map((g) => {
+    const cards = SCENARIOS.filter((s) => s.group === g.id).map((s) => `
+      <button class="pcard" data-id="${s.id}">
+        ${thumb(s)}
+        <b>${s.name}</b>
+      </button>`).join('');
+    return `<div class="pgroup"><div class="pglabel">${g.label}</div><div class="pgrid-row">${cards}</div></div>`;
   }).join('');
-  sel.value = state.id;
-  sel.addEventListener('change', () => loadScenario(sel.value));
-}
-
-function loadScenario(id) {
-  scenario = byId(id) || byId(DEFAULT_SCENARIO);
-  state.id = scenario.id;
-  state.given = { ...scenario.params };
-  if (scenario.noAngle) delete state.given.theta;
-  state.markers = JSON.parse(JSON.stringify(scenario.markers || {}));
-  state.firedBefore = false;
-  ghost = null;
-  cam.auto = true;
-  $('scenario-note').textContent = scenario.note || '';
-  $('scenario-note').hidden = !scenario.note;
-  buildFields();
-  unfire();
-}
-
-/* ── fields ─────────────────────────────────────────────────────────── */
-function buildFields() {
-  const root = $('fields');
-  root.innerHTML = '';
-
-  for (const fd of FIELDS) {
-    if (fd.key === 'theta' && scenario.noAngle) continue;
-    if (fd.key === 'u' && scenario.fixedU != null) continue;   // dropped: u is zero by definition
-    if (fd.key === 'mass' && !state.extras.energy && !state.bounce) continue;
-
-    const locked = fd.key === 'theta' && scenario.lockAngle;
-    const val = fd.key === 'mass' ? state.mass : state.given[fd.key];
-
-    const wrap = document.createElement('div');
-    wrap.className = 'field';
-    wrap.innerHTML = `
-      <div class="f-head"><span class="f-name">${fd.name}</span><span class="f-sym">${fd.sym}</span></div>
-      <div class="f-row">
-        <input class="f-num" type="number" step="any" data-k="${fd.key}"
-               value="${val ?? ''}" placeholder="—" aria-label="${fd.name} in ${fd.unit}"${locked ? ' readonly' : ''}>
-        <span class="f-unit">${fd.unit}</span>
-      </div>
-      ${fd.chips ? `<div class="chips" style="margin-top:var(--sp-2)">${GRAVITY.map((x) =>
-        `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label}</button>`).join('')}</div>` : ''}
-      <div class="f-derived" hidden></div>`;
-
-    const num = wrap.querySelector('.f-num');
-    num.addEventListener('input', (e) => {
-      const raw = e.target.value.trim();
-      const v = raw === '' ? undefined : parseFloat(raw);
-      if (fd.key === 'mass') state.mass = isFinite(v) ? v : 1;
-      else if (raw === '' || !isFinite(v)) delete state.given[fd.key];
-      else state.given[fd.key] = v;
-      cam.auto = true;
-      unfire();
-    });
-    for (const b of wrap.querySelectorAll('.chip')) {
-      b.addEventListener('click', () => {
-        state.given.g = parseFloat(b.dataset.g);
-        cam.auto = true; buildFields(); unfire();
-      });
-    }
-    root.append(wrap);
+  for (const b of $('pgrid').querySelectorAll('.pcard')) {
+    b.addEventListener('click', () => chooseScenario(b.dataset.id));
   }
 }
 
-/* ── solve, then decide whether Fire is allowed ─────────────────────── */
+/** A small sketch of the situation, drawn from its own numbers. */
+function thumb(s) {
+  const f = flight({ u: s.params.u || 0.001, theta: s.noAngle ? -90 : s.params.theta, h: s.params.h, g: s.params.g || 9.81 });
+  const pts = f.path(40);
+  const maxX = Math.max(1, ...pts.map((p) => p.x));
+  const maxY = Math.max(1, ...pts.map((p) => p.y));
+  const X = (x) => 8 + (x / maxX) * 104;
+  const Y = (y) => 52 - (y / maxY) * 40;
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)} ${Y(p.y).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 120 60" aria-hidden="true">
+    <line x1="2" y1="52.5" x2="118" y2="52.5" stroke="var(--border)" stroke-width="1"/>
+    ${s.params.h > 0 ? `<line x1="${X(0)}" y1="${Y(s.params.h)}" x2="${X(0)}" y2="52.5" stroke="var(--ink-faint)" stroke-width="1.5"/>` : ''}
+    <path d="${d}" fill="none" stroke="var(--vel)" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="${X(0)}" cy="${Y(s.params.h)}" r="3" fill="var(--vel)"/>
+  </svg>`;
+}
+
+function chooseScenario(id) {
+  scenario = byId(id);
+  state.id = id;
+  state.given = {};
+  // Seed only the quantities the situation itself fixes; the rest is theirs.
+  state.given.g = scenario.params.g;
+  if (scenario.noAngle) state.given.u = 0;
+  if (scenario.lockAngle) state.theta = scenario.params.theta;
+  state.theta = scenario.params.theta;
+  state.h = scenario.params.h;
+  state.markers = JSON.parse(JSON.stringify(scenario.markers || {}));
+  state.firedBefore = false; ghost = null;
+  $('chosen').textContent = scenario.name;
+  buildValuesScreen();
+  go('values');
+}
+
+/* ── step 2 · the five values ───────────────────────────────────────── */
+function buildValuesScreen() {
+  $('suvat').innerHTML = SUVAT.map((f) => {
+    const locked = (f.k === 'u' && scenario.noAngle);
+    return `<div class="sbox" data-k="${f.k}" data-locked="${locked}">
+      <div class="s-sym">${f.sym}</div>
+      <div class="s-name">${f.name}</div>
+      <input type="number" step="any" data-k="${f.k}" placeholder="—"
+             value="${state.given[f.k] ?? ''}" aria-label="${f.name} in ${f.unit}"${locked ? ' readonly' : ''}>
+      <div class="s-unit">${f.unit}</div>
+    </div>`;
+  }).join('');
+
+  for (const i of $('suvat').querySelectorAll('input')) {
+    i.addEventListener('input', (e) => {
+      const raw = e.target.value.trim();
+      const v = raw === '' ? undefined : parseFloat(raw);
+      if (raw === '' || !isFinite(v)) delete state.given[e.target.dataset.k];
+      else state.given[e.target.dataset.k] = v;
+      recompute();
+    });
+  }
+
+  // Only what this situation genuinely cannot do without.
+  const rows = [];
+  if (!scenario.noAngle && !scenario.lockAngle) {
+    rows.push(`<div class="xrow"><label for="x-theta">Angle of projection θ (°)</label>
+      <input id="x-theta" type="number" step="any" value="${state.theta ?? ''}" placeholder="—"></div>`);
+  }
+  rows.push(`<div class="xrow"><label for="x-h">Launch height h (m)</label>
+    <input id="x-h" type="number" step="any" value="${state.h ?? ''}" placeholder="—"></div>`);
+  rows.push(`<div class="xrow"><label>Gravitational field</label><div class="chips" id="g-chips">${
+    GRAVITY.map((x) => `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label}</button>`).join('')
+  }</div></div>`);
+  $('extra').innerHTML = rows.join('');
+
+  $('x-theta')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value); state.theta = isFinite(v) ? v : undefined; recompute();
+  });
+  $('x-h').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value); state.h = isFinite(v) ? v : undefined; recompute();
+  });
+  for (const b of $('g-chips').querySelectorAll('.chip')) {
+    b.addEventListener('click', () => {
+      state.given.g = parseFloat(b.dataset.g);
+      for (const x of $('g-chips').querySelectorAll('.chip')) x.setAttribute('aria-pressed', String(x === b));
+      $('suvat').querySelector('input[data-k="g"]').value = state.given.g;
+      recompute();
+    });
+  }
+  recompute();
+}
+
+/* ── solve ──────────────────────────────────────────────────────────── */
 function recompute() {
-  const k = { ...state.given };
-  if (scenario.fixedU != null) k.u = scenario.fixedU;
+  const k = { ...state.given, theta: state.theta, h: state.h };
+  if (scenario.noAngle) { k.u = 0; delete k.theta; }
+  if (scenario.lockAngle) k.theta = scenario.params.theta;
 
   solved = solveLaunch(k, { noAngle: scenario.noAngle, lockAngle: scenario.lockAngle });
 
-  const msg = $('solve-msg');
-  const fireBtn = $('fire');
+  const msg = $('solve-msg'), btn = $('launch');
+  for (const box of $('suvat').querySelectorAll('.sbox')) box.dataset.derived = 'false';
 
   if (!solved.ok) {
-    msg.dataset.ok = 'false';
-    msg.textContent = solved.reason;
-    fireBtn.disabled = true;
-    fireBtn.textContent = 'Fire';
-    $('fire-hint').textContent = '';
-    traj = null; second = null;
-    dirty = true;
-    markDerived({});
-    return;
+    msg.dataset.ok = 'false'; msg.textContent = solved.reason;
+    btn.disabled = true; btn.textContent = 'Launch';
+    $('launch-hint').textContent = 'Add one more value and this will unlock.';
+    traj = null; return;
   }
 
   msg.dataset.ok = 'true';
-  msg.textContent = solved.derived.length ? solved.derived.join('  ·  ') : '';
-  markDerived(solved.params);
-
-  traj = trajectory({
-    ...solved.params, mass: state.mass,
-    restitution: state.bounce ? state.restitution : 0,
-    maxBounces: state.bounce ? 6 : 0,
-  });
-  second = buildSecond(solved.params);
-
-  fireBtn.disabled = false;
-  fireBtn.textContent = state.fired ? 'Fire again' : `Fire at ${fmt(solved.params.u, 1)} m s⁻¹`;
-  dirty = true;
-}
-
-/** Show which boxes the engine filled in rather than the student. */
-function markDerived(params) {
-  for (const wrap of $('fields').querySelectorAll('.field')) {
-    const num = wrap.querySelector('.f-num');
-    const key = num.dataset.k;
-    if (key === 'mass' || !(key in params)) { wrap.dataset.derived = 'false'; continue; }
-    const wasGiven = state.given[key] !== undefined;
-    if (!wasGiven && params[key] !== undefined) {
-      num.value = Number(params[key].toFixed(2));
-      wrap.dataset.derived = 'true';
-    } else {
-      wrap.dataset.derived = 'false';
+  msg.textContent = solved.derived.length ? solved.derived.join('  ·  ') : 'Ready.';
+  // show which of the five the engine filled in
+  for (const key of ['u', 'g']) {
+    if (state.given[key] === undefined && solved.params[key] !== undefined) {
+      const box = $('suvat').querySelector(`.sbox[data-k="${key}"]`);
+      if (box) { box.dataset.derived = 'true'; box.querySelector('input').value = Number(solved.params[key].toFixed(2)); }
     }
   }
+
+  traj = trajectory({ ...solved.params, mass: state.mass,
+                      restitution: state.bounce ? state.restitution : 0,
+                      maxBounces: state.bounce ? 6 : 0 });
+  second = buildSecond(solved.params);
+  btn.disabled = false;
+  btn.textContent = `Launch at ${fmt(solved.params.u, 1)} m s⁻¹`;
+  $('launch-hint').textContent = '';
+  dirty = true;
 }
 
 function buildSecond(p) {
   const s = scenario.second;
   if (!s) return null;
   if (s.thetaFrom) return flight({ u: p.u, theta: s.thetaFrom(p.theta), h: p.h, g: p.g });
-  if (s.sameAsFirst) return flight({ ...p });
   return flight({ u: s.u, theta: s.theta, h: s.h, g: p.g });
 }
 
-/* ── fire / pause ───────────────────────────────────────────────────── */
-function unfire() {
-  state.fired = false; state.playing = false; state.t = 0;
-  $('play').disabled = true; $('scrub').disabled = true;
-  $('fire').dataset.state = 'ready';
-  $('fire-hint').textContent = state.firedBefore
-    ? 'The last path is shown faintly. Fire again to compare.'
-    : 'Nothing is drawn until you fire.';
-  recompute();
+/* ── step 3 · flight ────────────────────────────────────────────────── */
+function launch() {
+  if (!traj) return;
+  if (state.firedBefore) ghost = traj.path(260);
+  state.firedBefore = true; state.launched = true;
+  state.t = 0; state.playing = true;
+  cam.auto = true; cam3.auto = true;
+  setPlayIcon(true);
+  go('flight');
 }
 
-function fire() {
-  if (!traj) return;
-  // The path already flown becomes the faint projection on the next run.
-  if (state.fired || state.firedBefore) ghost = traj.path(260);
-  state.firedBefore = true;
-  state.fired = true; state.playing = true; state.t = 0;
-  $('play').disabled = false; $('scrub').disabled = false;
-  $('fire').dataset.state = 'fired';
-  $('fire').textContent = 'Fire again';
-  $('fire-hint').textContent = 'Space to pause and continue.';
-  setPlayIcon(true);
+function go(step) {
+  state.step = step;
+  $('app').dataset.step = step;
+  $('options-btn').hidden = step !== 'flight';
   dirty = true;
+  requestAnimationFrame(() => { dirty = true; });
 }
 
 function togglePlay() {
-  if (!state.fired) return;
+  if (!traj) return;
   if (state.t >= traj.tMax) state.t = 0;
-  state.playing = !state.playing;
-  setPlayIcon(state.playing);
-  dirty = true;
+  state.playing = !state.playing; setPlayIcon(state.playing); dirty = true;
 }
-
-function setPlayIcon(playing) {
-  $('play-icon').innerHTML = playing
+function setPlayIcon(on) {
+  $('play-icon').innerHTML = on
     ? '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>'
     : '<path d="M8 5v14l11-7z"/>';
-  $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
-  $('play').dataset.playing = String(playing);
+  $('play').dataset.playing = String(on);
+  $('play').setAttribute('aria-label', on ? 'Pause' : 'Play');
 }
 
-/* ── options ────────────────────────────────────────────────────────── */
-function buildOptions() {
-  const mk = (list, store) => list.map((s) =>
-    `<label class="ck"><input type="checkbox" data-k="${s.key}"${store[s.key] ? ' checked' : ''}>
-     <span class="box-ck"></span>${s.label}</label>`).join('');
-  $('shows').innerHTML = mk(SHOWS, state.show);
-  $('extras').innerHTML = mk(EXTRAS, state.extras);
-  for (const i of $('shows').querySelectorAll('input'))
-    i.addEventListener('change', () => { state.show[i.dataset.k] = i.checked; dirty = true; });
-  for (const i of $('extras').querySelectorAll('input'))
-    i.addEventListener('change', () => {
-      state.extras[i.dataset.k] = i.checked;
-      $('graphs-wrap').hidden = !state.extras.graphs;
-      $('working-wrap').hidden = !state.extras.working;
-      buildFields(); dirty = true;
-    });
-}
-
-/* ── readout boxes ──────────────────────────────────────────────────── */
-function renderBoxes() {
-  const on = state.fired && traj;
-  const p = on ? traj.pos(state.t) : { x: 0, y: 0 };
-  const v = on ? traj.vel(state.t) : { x: 0, y: 0 };
-  const box = (k, val, unit, hue) =>
-    `<div class="box"${hue ? ` data-hue="${hue}"` : ''} data-dim="${!on}">
-       <div class="box-k">${k}</div>
-       <div class="box-v">${on ? val : '—'}<small>${unit}</small></div></div>`;
-  const items = [
-    box('Time elapsed', fmt(state.t, 2), 's'),
-    box('Height', fmt(p.y, 1), 'm', 'disp'),
-    box('Horizontal distance', fmt(p.x, 1), 'm', 'disp'),
-    box('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
+/* ── readouts, on the diagram ───────────────────────────────────────── */
+function renderHud() {
+  if (!traj) return;
+  const p = traj.pos(state.t), v = traj.vel(state.t);
+  const b = (k, val, unit, hue) =>
+    `<div class="hbox"${hue ? ` data-hue="${hue}"` : ''}><div class="hbox-k">${k}</div>
+     <div class="hbox-v">${val}<small>${unit}</small></div></div>`;
+  const left = [
+    b('Height', fmt(p.y, 1), 'm', 'disp'),
+    b('Horizontal distance', fmt(p.x, 1), 'm', 'disp'),
+    b('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
   ];
-  if (state.extras.energy && on) {
-    items.push(box('Kinetic energy', fmt(traj.kineticEnergy(state.t), 0), 'J'));
-    items.push(box('Momentum', fmt(traj.momentum(state.t), 1), 'kg m s⁻¹'));
+  if (state.extras.energy) {
+    left.push(b('Kinetic energy', fmt(traj.kineticEnergy(state.t), 0), 'J'));
+    left.push(b('Momentum', fmt(traj.momentum(state.t), 1), 'kg m s⁻¹'));
   }
-  $('boxes').innerHTML = items.join('');
-  $('boxes').style.gridTemplateColumns = `repeat(${items.length > 4 ? 3 : 4}, 1fr)`;
+  $('hud-left').innerHTML = left.join('');
+  $('hud-right').innerHTML = b('Time elapsed', fmt(state.t, 2), 's');
 }
 
 function renderWorking() {
@@ -290,18 +271,18 @@ function renderWorking() {
 
 /* ── loop ───────────────────────────────────────────────────────────── */
 function draw() {
-  scene.render($('scene'), cam, {
-    traj, second, ghost, t: state.t, show: state.show, fired: state.fired,
-    markers: state.markers || {}, scenario,
-    secondLabel: scenario.second?.label,
-  });
-  if (state.extras.graphs && traj) {
+  if (state.step !== 'flight' || !traj) { dirty = false; return; }
+  const opts = { traj, second, ghost, t: state.t, show: state.show, fired: state.launched,
+                 markers: state.markers || {}, scenario, secondLabel: scenario.second?.label };
+  if (state.dim === '3d') scene3d.render($('scene'), cam3, opts);
+  else scene.render($('scene'), cam, opts);
+
+  if (state.extras.graphs) {
     const P = palette();
     for (const spec of graphSpecs(traj, state.t, P)) drawGraph($(spec.canvas), spec);
   }
-  renderBoxes();
-  renderWorking();
-  if (traj) $('scrub').value = traj.tMax ? state.t / traj.tMax : 0;
+  renderHud(); renderWorking();
+  $('scrub').value = traj.tMax ? state.t / traj.tMax : 0;
   dirty = false;
 }
 
@@ -309,13 +290,31 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (state.fired && state.playing && traj) {
+  if (state.step === 'flight' && state.playing && traj) {
     state.t += dt;
     if (state.t >= traj.tMax) { state.t = traj.tMax; state.playing = false; setPlayIcon(false); }
     dirty = true;
   }
   if (dirty) draw();
   requestAnimationFrame(frame);
+}
+
+/* ── options ────────────────────────────────────────────────────────── */
+function buildOptions() {
+  const mk = (list, store) => list.map((s) =>
+    `<label class="ck"><input type="checkbox" data-k="${s.key}"${store[s.key] ? ' checked' : ''}>
+     <span class="box-ck"></span>${s.label}</label>`).join('');
+  $('shows').innerHTML = mk(SHOWS, state.show);
+  $('extras').innerHTML = mk(EXTRAS, state.extras);
+  for (const i of $('shows').querySelectorAll('input'))
+    i.addEventListener('change', () => { state.show[i.dataset.k] = i.checked; dirty = true; });
+  for (const i of $('extras').querySelectorAll('input'))
+    i.addEventListener('change', () => {
+      state.extras[i.dataset.k] = i.checked;
+      $('graphs-wrap').hidden = !state.extras.graphs;
+      $('working-wrap').hidden = !state.extras.working;
+      dirty = true;
+    });
 }
 
 /* ── chrome ─────────────────────────────────────────────────────────── */
@@ -326,23 +325,33 @@ function applyTheme(mode) {
   dirty = true;
 }
 
-$('fire').addEventListener('click', fire);
+$('brand').addEventListener('click', () => go('scenario'));
+$('back-1').addEventListener('click', () => go('scenario'));
+$('back-2').addEventListener('click', () => go('values'));
+$('launch').addEventListener('click', launch);
 $('play').addEventListener('click', togglePlay);
-$('reset').addEventListener('click', () => { cam.auto = true; ghost = null; state.firedBefore = false; unfire(); });
+$('replay').addEventListener('click', () => { state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; });
 $('scrub').addEventListener('input', (e) => {
-  if (!state.fired || !traj) return;
+  if (!traj) return;
   state.playing = false; setPlayIcon(false);
   state.t = parseFloat(e.target.value) * traj.tMax; dirty = true;
 });
+for (const b of $('dim-seg').children) {
+  b.addEventListener('click', () => {
+    state.dim = b.dataset.dim;
+    for (const x of $('dim-seg').children) x.setAttribute('aria-pressed', String(x === b));
+    cam.auto = true; cam3.auto = true; dirty = true;
+  });
+}
 $('bounce-ck').addEventListener('change', (e) => {
   state.bounce = e.target.checked;
   $('bounce-opts').hidden = !state.bounce;
-  buildFields(); cam.auto = true; unfire();
+  cam.auto = true; cam3.auto = true; recompute(); dirty = true;
 });
 $('restitution').addEventListener('input', (e) => {
   state.restitution = parseFloat(e.target.value);
   $('rest-val').textContent = state.restitution.toFixed(2);
-  cam.auto = true; unfire();
+  cam.auto = true; recompute(); dirty = true;
 });
 $('theme-btn').addEventListener('click', () =>
   applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
@@ -355,31 +364,34 @@ $('options-btn').addEventListener('click', () => {
 
 document.addEventListener('keydown', (e) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-  if (e.code === 'Space') { e.preventDefault(); state.fired ? togglePlay() : fire(); }
-  else if (e.key === 'ArrowRight' && state.fired) { state.playing = false; setPlayIcon(false); state.t = Math.min(traj.tMax, state.t + traj.tMax / 60); dirty = true; }
-  else if (e.key === 'ArrowLeft' && state.fired)  { state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - traj.tMax / 60); dirty = true; }
+  if (state.step === 'values' && e.key === 'Enter' && !$('launch').disabled) { launch(); return; }
+  if (state.step !== 'flight') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'ArrowRight') { state.playing = false; setPlayIcon(false); state.t = Math.min(traj.tMax, state.t + traj.tMax / 60); dirty = true; }
+  else if (e.key === 'ArrowLeft')  { state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - traj.tMax / 60); dirty = true; }
 });
 
 addEventListener('resize', () => { dirty = true; });
-
-/* Markers are draggable on the canvas — the fence, the target, the line. */
 scene.attachControls($('scene'), cam, () => { dirty = true; },
   () => ({ markers: state.markers, scenario }),
   (kind, world) => {
+    if (state.dim !== '2d') return;
     if (kind === 'obstacle') { state.markers.obstacle.x = Math.max(0.5, world.x); state.markers.obstacle.height = Math.max(0, world.y); }
     else if (kind === 'target') { state.markers.target.x = Math.max(0.5, world.x); state.markers.target.y = Math.max(0, world.y); }
     else if (kind === 'heightLine') { state.markers.heightLine = Math.max(0, world.y); }
     dirty = true;
   });
+scene3d.attachControls3D($('scene'), cam3, () => { if (state.dim === '3d') dirty = true; });
 
 /* ── boot ───────────────────────────────────────────────────────────── */
 let saved = null;
 try { saved = localStorage.getItem('suvat-theme'); } catch {}
 applyTheme(saved || 'light');
-buildPicker();
+buildScenarioScreen();
 buildOptions();
-loadScenario(state.id);
+go('scenario');
 requestAnimationFrame(frame);
 
 window.SUVAT = { state, get traj() { return traj; }, get solved() { return solved; },
-                 cam, load: loadScenario, fire, redraw() { recompute(); draw(); } };
+                 cam, cam3, choose: chooseScenario, launch, go,
+                 redraw() { recompute(); draw(); } };
