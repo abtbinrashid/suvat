@@ -62,9 +62,9 @@
 }
 
 :root[data-theme='light'] {
-  --surface: #faf9f7;
+  --surface: #f1efea;   /* warm off-white — easier to look at than near-white */
   --card: #ffffff;
-  --card-hover: #f4f2ee;
+  --card-hover: #f7f5f1;
   --input: rgba(26,23,20,0.035);
   --border: rgba(26,23,20,0.14);
   --border-soft: rgba(26,23,20,0.07);

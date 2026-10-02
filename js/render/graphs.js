@@ -49,8 +49,8 @@ export function drawGraph(canvas, spec) {
   }
 
   // zero line and axes
-  stroke(ctx, [{ x: PAD.l, y: Y(0) }, { x: PAD.l + gw, y: Y(0) }], { color: P.axis, width: 1.3 });
-  stroke(ctx, [{ x: PAD.l + .5, y: PAD.t }, { x: PAD.l + .5, y: PAD.t + gh }], { color: P.axis, width: 1.3 });
+  stroke(ctx, [{ x: PAD.l, y: Y(0) }, { x: PAD.l + gw, y: Y(0) }], { color: P.axis, width: 2 });
+  stroke(ctx, [{ x: PAD.l + .5, y: PAD.t }, { x: PAD.l + .5, y: PAD.t + gh }], { color: P.axis, width: 2 });
 
   // area under the curve up to the cursor
   if (shade && series[shade.index]) {
@@ -67,12 +67,12 @@ export function drawGraph(canvas, spec) {
       const tt = (i / 160) * tMax, y = s.fn(tt);
       if (isFinite(y)) pts.push({ x: X(tt), y: Y(y) });
     }
-    stroke(ctx, pts, { color: s.color, width: 2.2, dash: s.dash });
+    stroke(ctx, pts, { color: s.color, width: 2.9, dash: s.dash });
   }
 
   // time cursor
   const cx = X(clamp(t, 0, tMax));
-  stroke(ctx, [{ x: cx, y: PAD.t }, { x: cx, y: PAD.t + gh }], { color: P.muted, width: 1.2, dash: [4, 4] });
+  stroke(ctx, [{ x: cx, y: PAD.t }, { x: cx, y: PAD.t + gh }], { color: P.muted, width: 1.8, dash: [5, 5] });
   for (const s of series) {
     const y = s.fn(t);
     if (isFinite(y)) dot(ctx, cx, Y(y), 4, { fill: P.surface, stroke: s.color, width: 2.2 });

@@ -14,7 +14,7 @@ export function drawGrid2D(ctx, P, L, { w, h, sx, sy, px, py, cam }) {
   const stepY = niceStep(h / cam.scale, 6);
 
   ctx.save();
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.4;
   // minor lines
   ctx.strokeStyle = P.grid;
   ctx.beginPath();
@@ -27,7 +27,7 @@ export function drawGrid2D(ctx, P, L, { w, h, sx, sy, px, py, cam }) {
   ctx.stroke();
 
   // the axes themselves, heavier
-  ctx.strokeStyle = P.gridMajor; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = P.gridMajor; ctx.lineWidth = 2.2;
   ctx.beginPath();
   const X0 = Math.round(sx(0)) + 0.5;
   if (X0 > 0 && X0 < w) { ctx.moveTo(X0, 0); ctx.lineTo(X0, h); }
@@ -120,7 +120,7 @@ export function drawGrid3D(ctx, P, L, V, { reach, w, h }) {
   for (let i = -n; i <= n; i++) {
     const c = i * step;
     const major = i === 0;
-    const st = major ? { color: P.gridMajor, width: 1.8 } : { color: P.grid, width: 1 };
+    const st = major ? { color: P.gridMajor, width: 2.4 } : { color: P.grid, width: 1.4 };
     line({ x: -lim, y: 0, z: c }, { x: lim, y: 0, z: c }, st);
     line({ x: c, y: 0, z: -lim }, { x: c, y: 0, z: lim }, st);
   }
@@ -128,11 +128,11 @@ export function drawGrid3D(ctx, P, L, V, { reach, w, h }) {
   // vertical scale, drawn in the plane the flight happens in
   const vTop = Math.max(step, Math.ceil(reach / 4 / step) * step);
   for (let y = step; y <= vTop; y += step) {
-    line({ x: 0, y, z: 0 }, { x: lim * 0.22, y, z: 0 }, { color: P.grid, width: 1 });
+    line({ x: 0, y, z: 0 }, { x: lim * 0.22, y, z: 0 }, { color: P.grid, width: 1.4 });
     const p = V.point({ x: 0, y, z: 0 });
     if (p) L.add(fmt(y, 0), p.x - 8, p.y, { color: P.faint, align: 'right', pri: -1, size: 15 });
   }
-  line({ x: 0, y: 0, z: 0 }, { x: 0, y: vTop, z: 0 }, { color: P.gridMajor, width: 1.8 });
+  line({ x: 0, y: 0, z: 0 }, { x: 0, y: vTop, z: 0 }, { color: P.gridMajor, width: 2.4 });
 
   for (let i = 1; i <= n; i++) {
     const p = V.point({ x: i * step, y: 0, z: 0 });

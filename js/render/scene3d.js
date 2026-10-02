@@ -25,38 +25,38 @@ export function render(canvas, cam3, o) {
 
   if (show.grid) drawGrid3D(ctx, P, L, V, { reach, w, h });
 
-  if (ghost && show.path) poly(ghost.map(P3), { color: P.faint, width: 2 });
+  if (ghost && show.path) poly(ghost.map(P3), { color: P.faint, width: 2.8 });
 
   if (second) {
-    poly(second.path(200).map(P3), { color: P.second, width: 2.4, dash: [8, 5], alpha: .9 });
+    poly(second.path(200).map(P3), { color: P.second, width: 3.2, dash: [9, 6], alpha: .9 });
   }
 
   if (show.path && fired) {
-    poly(f.path(260, t).concat([{ t, ...f.pos(t) }]).map(P3), { color: P.vel, width: 3.4 });
+    poly(f.path(260, t).concat([{ t, ...f.pos(t) }]).map(P3), { color: P.vel, width: 4.2 });
   }
 
   // launch mast
-  if (f.params.h > 0) seg({ x: 0, y: 0, z: 0 }, { x: 0, y: f.params.h, z: 0 }, { color: P.strong, width: 2.5 });
+  if (f.params.h > 0) seg({ x: 0, y: 0, z: 0 }, { x: 0, y: f.params.h, z: 0 }, { color: P.strong, width: 3.4 });
 
   const now = f.pos(fired ? t : 0), v = f.vel(fired ? t : 0);
   const p = V.point(P3(now));
   if (p) {
     // a dropped line to the ground is what makes the height readable in 3D
-    seg(P3(now), { x: now.x, y: 0, z: 0 }, { color: P.disp, width: 1.6, dash: [5, 5] });
+    seg(P3(now), { x: now.x, y: 0, z: 0 }, { color: P.disp, width: 2.2, dash: [6, 6] });
     const sh = V.point({ x: now.x, y: 0, z: 0 });
     if (sh) dot(ctx, sh.x, sh.y, 4, { fill: P.disp });
 
     if (fired && show.velocity) {
       const e = V.point({ x: now.x + v.x * 0.55, y: now.y + v.y * 0.55, z: 0 });
       if (e) {
-        arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 3, head: 13 });
+        arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 3.8, head: 15 });
         L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, e.x + 12, e.y - 12,
               { color: P.vel, pri: 10, size: 19, weight: 600 });
       }
     }
     if (fired && show.acceleration && f.params.g > 0) {
       const e = V.point({ x: now.x, y: now.y - f.params.g * 0.4, z: 0 });
-      if (e) arrow(ctx, p.x, p.y, e.x, e.y, { color: P.acc, width: 2.6, head: 11 });
+      if (e) arrow(ctx, p.x, p.y, e.x, e.y, { color: P.acc, width: 3.2, head: 13 });
     }
 
     const r = clamp(V.f / Math.max(1, V.point(P3(now))?.z ?? 50) * 0.5, 5, 11);

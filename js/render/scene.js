@@ -65,14 +65,14 @@ export function render(canvas, cam, o) {
 
   /* ── ground ───────────────────────────────────────────────────────── */
   ctx.save();
-  ctx.strokeStyle = P.axis; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = P.axis; ctx.lineWidth = 2.4;
   ctx.beginPath(); ctx.moveTo(0, Math.round(groundY) + 0.5); ctx.lineTo(w, Math.round(groundY) + 0.5); ctx.stroke();
   ctx.restore();
 
   /* ── height line, fence, target ───────────────────────────────────── */
   if (markers.heightLine != null) {
     const Y = sy(markers.heightLine);
-    stroke(ctx, [{ x: 0, y: Y }, { x: w, y: Y }], { color: P.mark, width: 2, dash: [8, 6], alpha: .9 });
+    stroke(ctx, [{ x: 0, y: Y }, { x: w, y: Y }], { color: P.mark, width: 2.8, dash: [10, 7], alpha: .9 });
     L.add(`${fmt(markers.heightLine, 1)} m${fired ? '' : ' — drag me'}`, w - 12, Y,
           { color: P.mark, align: 'right', pri: 6, size: 17 });
     dot(ctx, 40, Y, 8, { fill: P.surface, stroke: P.mark, width: 3 });
@@ -89,7 +89,7 @@ export function render(canvas, cam, o) {
 
   if (markers.obstacle) {
     const X = sx(markers.obstacle.x), Yt = sy(markers.obstacle.height);
-    stroke(ctx, [{ x: X, y: groundY }, { x: X, y: Yt }], { color: P.strong, width: 6 });
+    stroke(ctx, [{ x: X, y: groundY }, { x: X, y: Yt }], { color: P.strong, width: 8 });
     dot(ctx, X, Yt, 7, { fill: P.surface, stroke: P.strong, width: 2.5 });
     const clears = clearsObstacle(f, markers.obstacle);
     if (!fired) L.add('drag me', X, Yt - 26, { color: P.muted, align: 'center', pri: 5, size: 16 });
@@ -110,7 +110,7 @@ export function render(canvas, cam, o) {
   /* ── second object ────────────────────────────────────────────────── */
   if (second) {
     const delay = o.secondDelay || 0;
-    stroke(ctx, second.path(200).map(M), { color: P.second, width: 2.6, dash: [8, 5], alpha: .9 });
+    stroke(ctx, second.path(200).map(M), { color: P.second, width: 3.4, dash: [9, 6], alpha: .9 });
     const t2 = clamp(t - delay, 0, second.tMax);
     if (t >= delay) {
       const q = M(second.pos(t2));
@@ -124,14 +124,14 @@ export function render(canvas, cam, o) {
   // The previous run, if there was one. This is the only path ever drawn
   // ahead of the object, and it only exists from the second fire onwards.
   if (ghost && show.path) {
-    stroke(ctx, ghost.map(M), { color: P.faint, width: 2 });
+    stroke(ctx, ghost.map(M), { color: P.faint, width: 2.8 });
   }
 
   // The path is TRACED behind the object as it goes. Nothing is drawn ahead of
   // it, so the student watches the shape appear rather than reading it off.
   if (show.path && fired) {
     const flown = f.path(260, t).concat([{ t, ...f.pos(t) }]);
-    stroke(ctx, flown.map(M), { color: P.vel, width: 3.8 });
+    stroke(ctx, flown.map(M), { color: P.vel, width: 4.6 });
   }
 
   /* ── markers at equal time steps ──────────────────────────────────── */
@@ -160,8 +160,8 @@ export function render(canvas, cam, o) {
 
   if (show.range && isFinite(f.tFlight)) {
     const y = groundY + 32, x0 = sx(0), x1 = sx(f.range);
-    stroke(ctx, [{ x: x0, y }, { x: x1, y }], { color: P.muted, width: 1.5 });
-    for (const X of [x0, x1]) stroke(ctx, [{ x: X, y: y - 5 }, { x: X, y: y + 5 }], { color: P.muted, width: 1.5 });
+    stroke(ctx, [{ x: x0, y }, { x: x1, y }], { color: P.muted, width: 2.2 });
+    for (const X of [x0, x1]) stroke(ctx, [{ x: X, y: y - 6 }, { x: X, y: y + 6 }], { color: P.muted, width: 2.2 });
     L.add(`horizontal displacement ${fmt(f.range, 2)} m`, (x0 + x1) / 2, y + 18,
           { color: P.muted, align: 'center', pri: 7, push: 'down', size: 18 });
   }
@@ -182,19 +182,19 @@ export function render(canvas, cam, o) {
 
   if (fired && show.components) {
     const hx = p.x + v.x * vScale, vy = p.y - v.y * vScale;
-    arrow(ctx, p.x, p.y, hx, p.y, { color: P.vel, width: 1.8, head: 8, dash: [5, 4] });
-    arrow(ctx, p.x, p.y, p.x, vy,  { color: P.vel, width: 1.8, head: 8, dash: [5, 4] });
+    arrow(ctx, p.x, p.y, hx, p.y, { color: P.vel, width: 2.4, head: 10, dash: [6, 5] });
+    arrow(ctx, p.x, p.y, p.x, vy,  { color: P.vel, width: 2.4, head: 10, dash: [6, 5] });
     L.add(`horizontal ${fmt(v.x, 1)}`, hx + 8, p.y + 16, { color: P.vel, pri: 4, maxPush: 40, size: 17 });
     L.add(`vertical ${fmt(v.y, 1)}`, p.x + 10, vy - 14, { color: P.vel, pri: 4, maxPush: 40, size: 17 });
   }
   if (fired && show.velocity) {
     const ex = p.x + v.x * vScale, ey = p.y - v.y * vScale;
-    arrow(ctx, p.x, p.y, ex, ey, { color: P.vel, width: 3.4, head: 14 });
+    arrow(ctx, p.x, p.y, ex, ey, { color: P.vel, width: 4, head: 16 });
     L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, ex + 12, ey - 12, { color: P.vel, pri: 10, weight: 600, size: 19 });
   }
   if (fired && show.acceleration && f.params.g > 0) {
     const len = clamp(f.params.g * vScale * 0.5, 14, 60);
-    arrow(ctx, p.x, p.y, p.x, p.y + len, { color: P.acc, width: 2.8, head: 11 });
+    arrow(ctx, p.x, p.y, p.x, p.y + len, { color: P.acc, width: 3.4, head: 13 });
     L.add(`g ${fmt(f.params.g, 2)} m s⁻²`, p.x - 10, p.y + len + 4, { color: P.acc, align: 'right', pri: 5, size: 17 });
   }
 
@@ -204,7 +204,7 @@ export function render(canvas, cam, o) {
   /* ── launch point ─────────────────────────────────────────────────── */
   const lp = M({ x: 0, y: f.params.h });
   if (f.params.h > 0) {
-    stroke(ctx, [{ x: lp.x, y: lp.y }, { x: lp.x, y: groundY }], { color: P.strong, width: 2.5 });
+    stroke(ctx, [{ x: lp.x, y: lp.y }, { x: lp.x, y: groundY }], { color: P.strong, width: 3.4 });
     L.add(`${fmt(f.params.h, 1)} m`, lp.x - 12, (lp.y + groundY) / 2, { color: P.strong, align: 'right', pri: 6, size: 18 });
   }
   dot(ctx, lp.x, lp.y, 3.5, { fill: P.strong });
