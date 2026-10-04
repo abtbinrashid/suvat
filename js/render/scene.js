@@ -158,7 +158,9 @@ export function render(canvas, cam, o) {
     L.add(`greatest height ${fmt(f.apexHeight, 2)} m`, a.x, a.y - 26, { color: P.ink, align: 'center', pri: 8, size: 19, weight: 600 });
   }
 
-  if (show.range && isFinite(f.tFlight)) {
+  // A vertical launch has no horizontal displacement to bracket — a bar of
+  // zero width labelled 0.00 m is noise, not information.
+  if (show.range && isFinite(f.tFlight) && Math.abs(f.range) > 0.5) {
     const y = groundY + 32, x0 = sx(0), x1 = sx(f.range);
     stroke(ctx, [{ x: x0, y }, { x: x1, y }], { color: P.muted, width: 2.2 });
     for (const X of [x0, x1]) stroke(ctx, [{ x: X, y: y - 6 }, { x: X, y: y + 6 }], { color: P.muted, width: 2.2 });

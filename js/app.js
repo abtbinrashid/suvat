@@ -114,6 +114,7 @@ function buildValuesScreen() {
       <input type="number" step="any" data-k="${f.k}" placeholder="—"
              value="${state.given[f.k] ?? ''}" aria-label="${f.name} in ${f.unit}"${locked ? ' readonly' : ''}>
       <div class="s-unit">${f.unit}</div>
+      <div class="s-tag" data-tag="${f.k}"></div>
     </div>`;
   }).join('');
 
@@ -130,11 +131,13 @@ function buildValuesScreen() {
   // Only what this situation genuinely cannot do without.
   const rows = [];
   if (!scenario.noAngle && !scenario.lockAngle) {
-    rows.push(`<div class="xrow"><label for="x-theta">Angle of projection θ (°)</label>
-      <input id="x-theta" type="number" step="any" value="${state.theta ?? ''}" placeholder="—"></div>`);
+    rows.push(`<div class="xrow" data-x="theta"><label for="x-theta">Angle of projection θ (°)</label>
+      <input id="x-theta" type="number" step="any" value="${state.theta ?? ''}" placeholder="—">
+      <p class="xhint">Optional. Leave it blank if the question does not give it.</p></div>`);
   }
-  rows.push(`<div class="xrow"><label for="x-h">Launch height h (m)</label>
-    <input id="x-h" type="number" step="any" value="${state.h ?? ''}" placeholder="—"></div>`);
+  rows.push(`<div class="xrow" data-x="h"><label for="x-h">Launch height h (m)</label>
+    <input id="x-h" type="number" step="any" value="${state.h ?? ''}" placeholder="—">
+    <p class="xhint">Optional. Blank means it works the height out, or takes the ground.</p></div>`);
   rows.push(`<div class="xrow"><label>Gravitational field</label><div class="chips" id="g-chips">${
     GRAVITY.map((x) => `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label}</button>`).join('')
   }</div></div>`);
@@ -158,6 +161,55 @@ function buildValuesScreen() {
 }
 
 /* ── solve ──────────────────────────────────────────────────────────── */
+function clearDerived() {
+  for (const box of $('suvat').querySelectorAll('.sbox')) {
+    box.dataset.derived = 'false';
+    const tag = box.querySelector('.s-tag'); if (tag) tag.textContent = '';
+    const input = box.querySelector('input');
+    // put back only what the student typed; derived figures are transient
+    if (input && document.activeElement !== input) input.value = state.given[box.dataset.k] ?? '';
+  }
+  for (const row of $('extra').querySelectorAll('.xrow')) row.dataset.derived = 'false';
+}
+
+/** Write the engine's answers into the boxes it filled, and mark them as its own. */
+function showDerived(r) {
+  const put = (key, value) => {
+    // Never type over the student. A box they filled in is theirs.
+    if (state.given[key] !== undefined) return;
+    const box = $('suvat').querySelector(`.sbox[data-k="${key}"]`);
+    if (!box) return;
+    const input = box.querySelector('input');
+    box.dataset.derived = 'true';
+    box.querySelector('.s-tag').textContent = 'worked out';
+    if (document.activeElement !== input) input.value = Number(value.toFixed(2));
+  };
+  // Answer the question that was asked. If they pinned a moment mid-flight —
+  // "how fast is it going 9 m up?" — these boxes hold THAT answer; the landing
+  // card at the end holds the whole flight.
+  const set = r.answer ?? r.five;
+  const slots = { s: 's', u: 'u', v: 'v', a: 'g', t: 't' };
+  for (const [slot, key] of Object.entries(slots)) {
+    if (!set[slot].given) put(key, set[slot].value);
+  }
+  // the angle and the launch height, when the engine supplied them
+  const xrow = (name, value, dp) => {
+    const row = $('extra').querySelector(`.xrow[data-x="${name}"]`);
+    if (!row) return;
+    row.dataset.derived = 'true';
+    const input = row.querySelector('input');
+    if (input && document.activeElement !== input) input.value = Number(value.toFixed(dp));
+  };
+  if (r.filled.theta) xrow('theta', r.params.theta, 1);
+  if (r.filled.h || r.assumedH) xrow('h', r.params.h, 2);
+
+  const notes = [];
+  if (r.convention) notes.push(r.convention);
+  notes.push(...r.notes);
+  if (r.moment) notes.push(r.moment.text);
+  $('notes').innerHTML = notes.map((x) => `<li>${x}</li>`).join('');
+}
+
 function recompute() {
   const k = { ...state.given, theta: state.theta, h: state.h };
   if (scenario.noAngle) { k.u = 0; delete k.theta; }
@@ -166,31 +218,30 @@ function recompute() {
   solved = solveLaunch(k, { noAngle: scenario.noAngle, lockAngle: scenario.lockAngle });
 
   const msg = $('solve-msg'), btn = $('launch');
-  for (const box of $('suvat').querySelectorAll('.sbox')) box.dataset.derived = 'false';
+  clearDerived();
 
   if (!solved.ok) {
     msg.dataset.ok = 'false'; msg.textContent = solved.reason;
+    $('notes').innerHTML = '';
     btn.disabled = true; btn.textContent = 'Launch';
-    $('launch-hint').textContent = 'Add one more value and this will unlock.';
+    $('launch-hint').textContent = 'Fill in enough for the engine to pin the motion down.';
     traj = null; return;
   }
 
   msg.dataset.ok = 'true';
-  msg.textContent = solved.derived.length ? solved.derived.join('  ·  ') : 'Ready.';
-  // show which of the five the engine filled in
-  for (const key of ['u', 'g']) {
-    if (state.given[key] === undefined && solved.params[key] !== undefined) {
-      const box = $('suvat').querySelector(`.sbox[data-k="${key}"]`);
-      if (box) { box.dataset.derived = 'true'; box.querySelector('input').value = Number(solved.params[key].toFixed(2)); }
-    }
-  }
+  msg.textContent = solved.derived.length
+    ? `Worked out for you:  ${solved.derived.join('  ·  ')}`
+    : 'Everything needed is here.';
+  showDerived(solved);
 
   traj = trajectory({ ...solved.params, mass: state.mass,
                       restitution: state.bounce ? state.restitution : 0,
                       maxBounces: state.bounce ? 6 : 0 });
   second = buildSecond(solved.params);
   btn.disabled = false;
-  btn.textContent = `Launch at ${fmt(solved.params.u, 1)} m s⁻¹`;
+  btn.textContent = solved.params.u < 0.05
+    ? 'Release it'                      // a drop has no launch speed to quote
+    : `Launch at ${fmt(solved.params.u, 1)} m s⁻¹`;
   $('launch-hint').textContent = '';
   dirty = true;
 }
@@ -210,6 +261,7 @@ function launch() {
   state.t = 0; state.playing = true;
   cam.auto = true; cam3.auto = true;
   setPlayIcon(true);
+  hideDone();
   go('flight');
 }
 
@@ -223,6 +275,7 @@ function go(step) {
 
 function togglePlay() {
   if (!traj) return;
+  hideDone();
   if (state.t >= traj.tMax) state.t = 0;
   state.playing = !state.playing; setPlayIcon(state.playing); dirty = true;
 }
@@ -241,11 +294,22 @@ function renderHud() {
   const b = (k, val, unit, hue) =>
     `<div class="hbox"${hue ? ` data-hue="${hue}"` : ''}><div class="hbox-k">${k}</div>
      <div class="hbox-v">${val}<small>${unit}</small></div></div>`;
-  const left = [
-    b('Height', fmt(p.y, 1), 'm', 'disp'),
-    b('Horizontal distance', fmt(p.x, 1), 'm', 'disp'),
-    b('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
-  ];
+  // In a straight line the horizontal distance is always zero, so show the
+  // signed displacement along the line instead — that is the s being solved.
+  const line = solved?.mode === '1d';
+  const h0 = solved?.params.h ?? 0;
+  const toAxis = (y) => (solved?.axis === 'down' ? -y : y);
+  const left = line
+    ? [
+        b('Displacement', fmt(toAxis(p.y - h0), 1), 'm', 'disp'),
+        b('Height', fmt(p.y, 1), 'm', 'disp'),
+        b('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
+      ]
+    : [
+        b('Height', fmt(p.y, 1), 'm', 'disp'),
+        b('Horizontal distance', fmt(p.x, 1), 'm', 'disp'),
+        b('Speed', fmt(Math.hypot(v.x, v.y), 1), 'm s⁻¹', 'vel'),
+      ];
   if (state.extras.energy) {
     left.push(b('Kinetic energy', fmt(traj.kineticEnergy(state.t), 0), 'J'));
     left.push(b('Momentum', fmt(traj.momentum(state.t), 1), 'kg m s⁻¹'));
@@ -253,6 +317,51 @@ function renderHud() {
   $('hud-left').innerHTML = left.join('');
   $('hud-right').innerHTML = b('Time elapsed', fmt(state.t, 2), 's');
 }
+
+/* ── the landing card: the whole of SUVAT, once it has settled ───────── */
+const SYM = { s: 's', u: 'u', v: 'v', a: 'a', t: 't' };
+
+function showDone() {
+  if (!solved?.ok || state.step !== 'flight') return;
+  const r = solved;
+
+  $('done-eyebrow').textContent = traj.bounces > 0
+    ? `First flight, then ${traj.bounces} ${traj.bounces === 1 ? 'bounce' : 'bounces'}`
+    : `Flight complete in ${fmt(r.five.t.value, 2)} s`;
+  $('done-title').textContent = title(r);
+  $('done-conv').textContent = r.convention || '';
+
+  $('done-five').innerHTML = Object.entries(r.five).map(([slot, x]) => `
+    <div class="dcell" data-given="${x.given}">
+      <div class="d-sym">${SYM[slot]}</div>
+      <div class="d-name">${x.label}</div>
+      <div class="d-val">${fmt(x.value, Math.abs(x.value) < 10 ? 2 : 1)}</div>
+      <div class="d-unit">${x.unit}</div>
+      <div class="d-from">${x.given ? 'you gave this' : 'worked out'}</div>
+    </div>`).join('');
+
+  $('done-extra').innerHTML = r.extras
+    .map((x) => `<span class="dx">${x.label}<b>${fmt(x.value, x.unit === '°' ? 1 : 2)}${x.unit === '°' ? '' : ' '}${x.unit}</b></span>`)
+    .join('');
+
+  // Whatever still needs saying: an assumption, a second valid angle, or the
+  // instant they actually asked about.
+  const said = [];
+  if (r.moment) said.push(r.moment.text);
+  said.push(...r.notes);
+  $('done-note').textContent = said.join(' ');
+
+  $('done').hidden = false;
+}
+
+function title(r) {
+  if (traj?.bounces > 0) return 'It finished bouncing';
+  if (r.mode === '1d' && Math.abs(r.params.u) < 1e-9) return 'It hit the ground';
+  if (r.mode === '1d' && r.params.h <= 1e-9) return 'It came back down';
+  return 'It landed';
+}
+
+function hideDone() { $('done').hidden = true; }
 
 function renderWorking() {
   if (!state.extras.working || !traj) return;
@@ -292,7 +401,10 @@ function frame(now) {
   last = now;
   if (state.step === 'flight' && state.playing && traj) {
     state.t += dt;
-    if (state.t >= traj.tMax) { state.t = traj.tMax; state.playing = false; setPlayIcon(false); }
+    if (state.t >= traj.tMax) {
+      state.t = traj.tMax; state.playing = false; setPlayIcon(false);
+      showDone();                       // only ever on a flight that ran its course
+    }
     dirty = true;
   }
   if (dirty) draw();
@@ -327,12 +439,17 @@ function applyTheme(mode) {
 
 $('brand').addEventListener('click', () => go('scenario'));
 $('back-1').addEventListener('click', () => go('scenario'));
-$('back-2').addEventListener('click', () => go('values'));
+$('back-2').addEventListener('click', () => { hideDone(); go('values'); });
 $('launch').addEventListener('click', launch);
 $('play').addEventListener('click', togglePlay);
-$('replay').addEventListener('click', () => { state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; });
+const replay = () => { hideDone(); state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; };
+$('replay').addEventListener('click', replay);
+$('done-replay').addEventListener('click', replay);
+$('done-close').addEventListener('click', hideDone);
+$('done-values').addEventListener('click', () => { hideDone(); go('values'); });
 $('scrub').addEventListener('input', (e) => {
   if (!traj) return;
+  hideDone();
   state.playing = false; setPlayIcon(false);
   state.t = parseFloat(e.target.value) * traj.tMax; dirty = true;
 });
@@ -366,9 +483,10 @@ document.addEventListener('keydown', (e) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (state.step === 'values' && e.key === 'Enter' && !$('launch').disabled) { launch(); return; }
   if (state.step !== 'flight') return;
+  if (e.key === 'Escape') { hideDone(); return; }
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-  else if (e.key === 'ArrowRight') { state.playing = false; setPlayIcon(false); state.t = Math.min(traj.tMax, state.t + traj.tMax / 60); dirty = true; }
-  else if (e.key === 'ArrowLeft')  { state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - traj.tMax / 60); dirty = true; }
+  else if (e.key === 'ArrowRight') { hideDone(); state.playing = false; setPlayIcon(false); state.t = Math.min(traj.tMax, state.t + traj.tMax / 60); dirty = true; }
+  else if (e.key === 'ArrowLeft')  { hideDone(); state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - traj.tMax / 60); dirty = true; }
 });
 
 addEventListener('resize', () => { dirty = true; });
@@ -394,4 +512,5 @@ requestAnimationFrame(frame);
 
 window.SUVAT = { state, get traj() { return traj; }, get solved() { return solved; },
                  cam, cam3, choose: chooseScenario, launch, go,
+                 showDone, hideDone,
                  redraw() { recompute(); draw(); } };

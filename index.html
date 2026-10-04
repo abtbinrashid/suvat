@@ -44,13 +44,14 @@
     <div class="centre narrow">
       <p class="eyebrow" id="chosen"></p>
       <h1 class="h-big">s u v a t</h1>
-      <p class="h-sub">Fill in what the question gives you. Leave the rest blank — anything that can be worked out, will be.</p>
+      <p class="h-sub">Fill in what the question gives you and leave the rest blank. Any three of the five pin down the other two — and you do <b>not</b> need the angle of projection.</p>
 
       <div class="suvat" id="suvat"></div>
 
       <div class="extra" id="extra"></div>
 
       <div class="solve" id="solve-msg"></div>
+      <ul class="notes" id="notes"></ul>
 
       <div class="actions">
         <button class="ghost" id="back-1">Back</button>
@@ -81,6 +82,25 @@
           <canvas id="scene" aria-label="Projectile motion"></canvas>
           <div class="hud hud-l" id="hud-left"></div>
           <div class="hud hud-r" id="hud-right"></div>
+
+          <!-- shown when the flight finishes: the whole of SUVAT, settled -->
+          <div class="done" id="done" hidden>
+            <div class="done-card" role="dialog" aria-labelledby="done-title">
+              <div class="done-head">
+                <p class="done-eyebrow" id="done-eyebrow">Flight complete</p>
+                <h2 class="done-h" id="done-title">It landed</h2>
+                <p class="done-conv" id="done-conv"></p>
+              </div>
+              <div class="done-five" id="done-five"></div>
+              <div class="done-extra" id="done-extra"></div>
+              <p class="done-note" id="done-note"></p>
+              <div class="done-acts">
+                <button class="ghost" id="done-close">Look at the diagram</button>
+                <button class="tbtn" id="done-values">Change values</button>
+                <button class="fire sm" id="done-replay">Replay</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="transport">

@@ -86,6 +86,14 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1
 .sbox input::placeholder { color: var(--ink-faint); font-weight: 400; }
 .sbox[data-derived='true'] input { color: var(--accent); }
 .s-unit { font-size: 12px; color: var(--ink-faint); margin-top: var(--sp-1); }
+.s-tag { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--accent); margin-top: 2px; min-height: 1.2em; }
+
+.xrow[data-derived='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.xrow[data-derived='true'] input { color: var(--accent); }
+.xhint { font-size: var(--fs-xs); color: var(--ink-faint); margin-top: var(--sp-2); line-height: 1.4; }
+.notes { font-size: var(--fs-sm); color: var(--ink-muted); line-height: 1.55; margin: 0 0 var(--sp-5); }
+.notes li { margin-bottom: var(--sp-1); }
+.notes:empty { display: none; }
 
 .extra { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-5); }
 .xrow { background: var(--card); border: 1px solid var(--border-soft); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); box-shadow: var(--shadow); }
@@ -131,18 +139,65 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1
 .canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
 /* ── readouts, on the diagram ───────────────────────────────────────── */
-.hud { position: absolute; top: var(--sp-4); display: flex; gap: var(--sp-2); pointer-events: none; }
+.hud { position: absolute; top: var(--sp-4); display: flex; gap: var(--sp-2); pointer-events: none; z-index: 2; }
 .hud-l { left: var(--sp-4); flex-direction: column; }
 .hud-r { right: var(--sp-4); }
 .hbox {
-  background: var(--card); border: 1px solid var(--border-soft); border-radius: var(--r-md);
-  padding: 5px var(--sp-3); box-shadow: var(--shadow); min-width: 96px;
+  background: var(--card); border: 1px solid var(--border-soft); border-radius: var(--r-lg);
+  padding: var(--sp-2) var(--sp-4); box-shadow: var(--shadow); min-width: 140px;
 }
-.hbox-k { font-size: 11px; color: var(--ink-muted); line-height: 1.3; white-space: nowrap; }
-.hbox-v { font-size: var(--fs-base); font-weight: 700; line-height: 1.25; white-space: nowrap; }
-.hbox-v small { font-size: 11px; font-weight: 400; color: var(--ink-muted); margin-left: 3px; }
+.hbox-k { font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.3; white-space: nowrap; }
+.hbox-v { font-size: var(--fs-xl); font-weight: 700; line-height: 1.2; white-space: nowrap; letter-spacing: -0.02em; }
+.hbox-v small { font-size: var(--fs-xs); font-weight: 400; color: var(--ink-muted); margin-left: 4px; letter-spacing: 0; }
+.hud-r .hbox { min-width: 124px; }
 .hbox[data-hue='vel'] .hbox-v { color: var(--vel); }
 .hbox[data-hue='disp'] .hbox-v { color: var(--disp); }
+
+/* ── the landing card: the whole of SUVAT, once it has settled ───────── */
+.done {
+  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+  padding: var(--sp-4); overflow-y: auto;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(3px);
+  animation: done-in 240ms ease-out both;
+}
+@keyframes done-in { from { opacity: 0; } to { opacity: 1; } }
+.done-card {
+  width: min(760px, 100%); background: var(--card);
+  border: 1px solid var(--border-soft); border-radius: var(--r-xl);
+  box-shadow: 0 18px 48px rgba(0,0,0,.18); padding: var(--sp-6);
+  animation: done-rise 300ms cubic-bezier(.2,.8,.25,1) both;
+}
+@keyframes done-rise { from { transform: translateY(14px) scale(.985); } to { transform: none; } }
+
+.done-eyebrow { font-size: var(--fs-xs); letter-spacing: 0.11em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 var(--sp-1); }
+.done-h { font-size: var(--fs-2xl); margin: 0; }
+.done-conv { font-size: var(--fs-sm); color: var(--ink-muted); margin: var(--sp-2) 0 var(--sp-5); }
+.done-conv:empty { display: none; }
+
+.done-five { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: var(--sp-3); }
+.dcell {
+  border: 1px solid var(--border-soft); border-radius: var(--r-lg);
+  padding: var(--sp-3); text-align: center; background: var(--input);
+}
+.dcell[data-given='false'] { border-color: var(--accent); background: var(--accent-soft); }
+.d-sym { font-size: var(--fs-xl); font-weight: 700; line-height: 1; }
+.d-name { font-size: 12px; color: var(--ink-muted); line-height: 1.3; margin: 3px 0 var(--sp-3); min-height: 2.4em; }
+.d-val { font-size: var(--fs-2xl); font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; }
+.dcell[data-given='false'] .d-val { color: var(--accent); }
+.d-unit { font-size: var(--fs-xs); color: var(--ink-faint); margin-top: 2px; }
+.d-from { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--ink-faint); margin-top: var(--sp-2); }
+.dcell[data-given='false'] .d-from { color: var(--accent); }
+
+.done-extra { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--border-soft); }
+.dx { font-size: var(--fs-sm); color: var(--ink-muted); white-space: nowrap; }
+.dx b { color: var(--ink); font-weight: 700; font-size: var(--fs-base); margin-left: 6px; }
+
+.done-note { font-size: var(--fs-sm); color: var(--ink-strong); line-height: 1.55; margin: var(--sp-4) 0 0; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-lg); background: var(--accent-soft); }
+.done-note:empty { display: none; }
+.done-acts { display: flex; gap: var(--sp-3); margin-top: var(--sp-5); }
+.done-acts .ghost, .done-acts .tbtn { flex: none; }
+.fire.sm { height: 40px; font-size: var(--fs-sm); flex: 1; }
 
 .transport { display: flex; align-items: center; gap: var(--sp-4); padding-top: var(--sp-3); }
 .play { width: 48px; height: 48px; flex: none; border-radius: var(--r-pill); background: var(--card); border: 1px solid var(--border); color: var(--ink); display: grid; place-items: center; box-shadow: var(--shadow); }
@@ -192,6 +247,10 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; background: v
 }
 @media (max-width: 860px) {
   body { overflow: auto; }
+  .done-card { padding: var(--sp-4); }
+  .done-acts { flex-wrap: wrap; }
+  .hbox { min-width: 112px; padding: 6px var(--sp-3); }
+  .hbox-v { font-size: var(--fs-lg); }
   .app { height: auto; min-height: 100dvh; }
   .steps li span { display: none; }
   .suvat { grid-template-columns: repeat(2, 1fr); }
