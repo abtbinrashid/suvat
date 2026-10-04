@@ -21,12 +21,14 @@
 
 import { solve as solveFive } from './suvat.js';
 import { flight } from './projectile.js';
+import { M, num } from '../notation.js';
 
 const DEG = Math.PI / 180;
 const EPS = 1e-9;
 const have = (x) => typeof x === 'number' && isFinite(x);
 const n = (x, p = 2) => Number(x.toFixed(p));
-const d = (x, p = 2) => String(n(x, p));
+// Numbers are typeset too: a minus sign, not a hyphen. See js/notation.js.
+const d = (x, p = 2) => num(x, p, { trim: true });
 
 /** The five, in the order the engine prefers to lean on them. */
 const FIVE = ['s', 'u', 'v', 'g', 't'];
@@ -65,7 +67,7 @@ export function solveLaunch(input = {}, opts = {}) {
     g = (k.v * k.v - k.u * k.u) / (2 * k.h);
     if (g < -EPS) return fail('The landing speed is below the launch speed, which gravity alone cannot do. Check u, v and the launch height.', ctx);
     g = Math.max(0, g);
-    ctx.add('g', `a = (v² − u²) / 2h = ${d(g)} m s⁻²`);
+    ctx.add('g', M`a = (v^2 - u^2)/(2h) = ${d(g)} [m s^-2]`);
   } else {
     return fail('Enter the acceleration — pick a gravitational field below, or give u, v and the launch height so it can be worked out.', ctx);
   }
@@ -128,24 +130,24 @@ function asArc(k, g, ctx) {
     const H = (v * v - u * u) / (2 * g);
     if (H < -1e-6) return fail('Those values give a negative launch height — the landing speed is below the launch speed, which cannot happen under gravity alone.', ctx);
     h = Math.max(0, H);
-    ctx.add('h', `h = (v² − u²) / 2g = ${d(h)} m`);
+    ctx.add('h', M`h = (v^2 - u^2)/(2g) = ${d(h)} [m]`);
   }
   if (!have(u) && have(v) && have(h) && g > EPS) {
     const sq = v * v - 2 * g * h;
     if (sq < 0) return fail(`Nothing launched from ${d(h)} m lands at only ${d(v)} m s⁻¹ — it arrives faster than that however gently it is thrown.`, ctx);
     u = Math.sqrt(sq);
-    ctx.add('u', `u = √(v² − 2gh) = ${d(u)} m s⁻¹`);
+    ctx.add('u', M`u = sqrt(v^2 - 2gh) = ${d(u)} [m s^-1]`);
   }
 
   /* s and t together give BOTH components, so both u and θ at once —
      the single most examined way of getting an unknown angle */
   if (!have(theta) && !have(u) && have(s) && have(t) && t > EPS && have(h)) {
-    const ux = s / t;                             // horizontal: a = 0, so s = uₓt
+    const ux = s / t;                             // horizontal: a = 0, so s = u_x t
     const uy = (0.5 * g * t * t - h) / t;         // vertical:   0 = h + u_y t − ½gt²
     u = Math.hypot(ux, uy);
     theta = Math.atan2(uy, ux) / DEG;
-    ctx.add('u', `uₓ = s/t = ${d(ux)} and u_y = (½gt² − h)/t = ${d(uy)}, so u = √(uₓ² + u_y²) = ${d(u)} m s⁻¹`);
-    ctx.add('theta', `tan θ = u_y / uₓ, so θ = ${d(theta, 1)}°`);
+    ctx.add('u', `${M`u_x = s/t = ${d(ux)}`} and ${M`u_y = (½gt^2 - h)/t = ${d(uy)}`}, so ${M`u = sqrt(u_x^2 + u_y^2) = ${d(u)} [m s^-1]`}`);
+    ctx.add('theta', M`tan theta = u_y/u_x, "so" theta = ${d(theta, 1)}°`);
   }
 
   /* speed from the landing speed and the time, at a known angle */
@@ -160,7 +162,7 @@ function asArc(k, g, ctx) {
         .filter((x) => x > EPS && 0.5 * g * t * t - x * sn * t > -1e-6);
       if (fits.length) {
         u = fits[0];
-        ctx.add('u', `u² − (2gt sin θ)u + (g²t² − v²) = 0, so u = ${d(u)} m s⁻¹`);
+        ctx.add('u', `${M`u^2 - (2gt sin theta)u + (g^2t^2 - v^2) = 0`}, so ${M`u = ${d(u)} [m s^-1]`}`);
       }
     }
   }
@@ -172,12 +174,12 @@ function asArc(k, g, ctx) {
       const H = 0.5 * g * t * t - u * sn * t;     // 0 = h + u sin θ t − ½gt²
       if (H < -1e-6) return fail(`It cannot stay in the air for ${d(t)} s when launched at ${d(u)} m s⁻¹ and ${d(theta, 1)}° — it would have to start below the ground.`, ctx);
       h = Math.max(0, H);
-      ctx.add('h', `h = ½gt² − u sin θ · t = ${d(h)} m`);
+      ctx.add('h', M`h = ½gt^2 - u sin theta · t = ${d(h)} [m]`);
     } else if (have(s) && Math.abs(c) > EPS) {
       const H = (g * s * s) / (2 * u * u * c * c) - s * Math.tan(th);
       if (H < -1e-6) return fail(`Launched at ${d(u)} m s⁻¹ and ${d(theta, 1)}° it already passes ${d(s)} m before coming down to the launch level, so no launch height fits.`, ctx);
       h = Math.max(0, H);
-      ctx.add('h', `h = gs² / (2u²cos²θ) − s tan θ = ${d(h)} m`);
+      ctx.add('h', M`h = gs^2/(2u^2 cos^2 theta) - s tan theta = ${d(h)} [m]`);
     }
   }
 
@@ -219,7 +221,7 @@ function findU(theta, h, g, s, t, v) {
     if (Math.abs(sn) < EPS) return { ok: false, reason: 'A horizontal launch falls for a time set only by the height, so the time of flight cannot give the speed. Give the horizontal displacement instead.' };
     const u = (0.5 * g * t * t - h) / (t * sn);
     if (!isFinite(u) || u < 0) return { ok: false, reason: `No launch speed keeps it in the air for ${d(t)} s at ${d(theta, 1)}° from ${d(h)} m.` };
-    return { ok: true, u, how: `u = (½gt² − h) / (t sin θ) = ${d(u)} m s⁻¹` };
+    return { ok: true, u, how: M`u = (½gt^2 - h)/(t sin theta) = ${d(u)} [m s^-1]` };
   }
 
   if (have(s)) {
@@ -228,14 +230,14 @@ function findU(theta, h, g, s, t, v) {
     if (denom <= 0) return { ok: false, reason: `Nothing launched at ${d(theta, 1)}° from ${d(h)} m lands ${d(s)} m away — the geometry does not allow it.` };
     const u = s * Math.sqrt(g / denom);
     if (!isFinite(u) || u <= 0) return { ok: false, reason: 'No launch speed fits those values.' };
-    return { ok: true, u, how: `from s = ${d(s)} m at θ = ${d(theta, 1)}°, u = ${d(u)} m s⁻¹` };
+    return { ok: true, u, how: `from ${M`s = ${d(s)} [m]`} at ${M`theta = ${d(theta, 1)}°`}, ${M`u = ${d(u)} [m s^-1]`}` };
   }
 
   if (have(v)) {
     const sq = v * v - 2 * g * h;
     if (sq < 0) return { ok: false, reason: `Nothing launched from ${d(h)} m lands at only ${d(v)} m s⁻¹.` };
     const u = Math.sqrt(sq);
-    return { ok: true, u, how: `u = √(v² − 2gh) = ${d(u)} m s⁻¹` };
+    return { ok: true, u, how: M`u = sqrt(v^2 - 2gh) = ${d(u)} [m s^-1]` };
   }
 
   return { ok: false, reason: 'To find the launch speed, also give where it lands, the time of flight, or the landing speed.' };
@@ -248,7 +250,7 @@ function findTheta(u, h, g, s, t) {
     const sn = (0.5 * g * t * t - h) / (u * t);
     if (Math.abs(sn) > 1) return { ok: false, reason: `No angle keeps it up for ${d(t)} s at ${d(u)} m s⁻¹ — ${sn > 1 ? 'even straight up is not enough' : 'even straight down takes longer than that'}.` };
     const theta = Math.asin(sn) / DEG;
-    return { ok: true, theta, how: `sin θ = (½gt² − h) / ut, so θ = ${d(theta, 1)}°` };
+    return { ok: true, theta, how: M`sin theta = (½gt^2 - h)/(ut), "so" theta = ${d(theta, 1)}°` };
   }
 
   if (have(s) && u > EPS && g > EPS) {
@@ -264,7 +266,7 @@ function findTheta(u, h, g, s, t) {
     return {
       ok: true, theta: angles[0],
       alt: Math.abs(angles[0] - angles[1]) > 0.05 ? angles[1] : null,
-      how: `from s = ${d(s)} m at u = ${d(u)} m s⁻¹, θ = ${d(angles[0], 1)}°`,
+      how: `from ${M`s = ${d(s)} [m]`} at ${M`u = ${d(u)} [m s^-1]`}, ${M`theta = ${d(angles[0], 1)}°`}`,
     };
   }
 
@@ -299,8 +301,8 @@ function asLine(k, g, ctx, angleKnown) {
     known.s = k.h > EPS ? (up ? -k.h : k.h) : 0;
     sFromHeight = true;
     ctx.add('s', k.h > EPS
-      ? `it lands on the ground ${d(k.h)} m below the launch point, so s = ${d(known.s)} m`
-      : 'it lands back at the level it was launched from, so s = 0 m');
+      ? `it lands on the ground ${d(k.h)} m below the launch point, so ${M`s = ${d(known.s)} [m]`}`
+      : `it lands back at the level it was launched from, so ${M`s = 0 [m]`}`);
   }
 
   // A displacement beyond the turning point simply never happens. Say so,
@@ -308,7 +310,7 @@ function asLine(k, g, ctx, angleKnown) {
   if (have(known.s) && have(known.u) && Math.abs(a) > EPS && known.u * a < 0) {
     const sTurn = -(known.u * known.u) / (2 * a);
     if (known.s > sTurn + 1e-6) {
-      return fail(`At ${d(Math.abs(known.u))} m s\u207b\u00b9 it only reaches ${d(sTurn)} m before turning back, so a displacement of ${d(known.s)} m never happens.`, ctx);
+      return fail(`At ${d(Math.abs(known.u))} m s⁻¹ it only reaches ${d(sTurn)} m before turning back, so a displacement of ${d(known.s)} m never happens.`, ctx);
     }
   }
 
@@ -362,7 +364,9 @@ function asLine(k, g, ctx, angleKnown) {
   for (const key of ['s', 'u', 'v', 't']) {
     if (!have(known[key]) && have(vals[key])) {
       const step = best.steps.find((st) => st.target === key);
-      ctx.add(key === 'u' ? 'u' : key, step ? `${step.rearranged} → ${key} = ${d(vals[key])}` : `${key} = ${d(vals[key])}`);
+      ctx.add(key === 'u' ? 'u' : key, step
+        ? `${step.rearranged} → ${M`${key} = ${d(vals[key])}`}`
+        : M`${key} = ${d(vals[key])}`);
     }
   }
   // Values that genuinely contradict each other must not be drawn — the

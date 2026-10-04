@@ -1,5 +1,7 @@
 // util.js — canvas plumbing. No physics here.
 
+import { num } from '../notation.js';
+
 export function fitCanvas(canvas) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const r = canvas.getBoundingClientRect();
@@ -43,10 +45,11 @@ export function palette() {
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
+// Every number on a canvas goes through here, and through js/notation.js from
+// there — so a negative value on an axis is −3, with a minus sign, and a huge
+// one is 1.2 × 10⁵ rather than a programmer's 1.2e+5.
 export function fmt(x, dp = 1) {
-  if (!isFinite(x)) return '∞';
-  if (Math.abs(x) >= 100000) return x.toExponential(1);
-  return x.toFixed(dp);
+  return num(x, dp);
 }
 
 export function niceStep(span, target = 6) {
@@ -93,12 +96,13 @@ export function dot(ctx, x, y, r, { fill, stroke: st, width = 2 } = {}) {
 /* ── labels ────────────────────────────────────────────────────────────
    13px is the floor everywhere on this site, and canvas text ignores CSS,
    so the floor is enforced here by hand. Labels are queued with a priority
-   and placed in one pass; anything that cannot find clear space is dropped,
-   because a missing label reads better than two printed on top of each other. */
+   and placed in one pass.
 
-// Canvas text ignores CSS, so the floor is enforced here. 13 was too small to
-// read on a 1100px canvas — and a teacher at the back of a room is the test.
-const MIN_SIZE = 15;
+   THE FLOOR IS 13. It used to be 15, which silently overrode every `size: 13`
+   a caller asked for — and the far-field text, which bypasses this queue,
+   drew at a genuine 13. Two label systems with two different floors is one
+   too many, so the floor is the floor and chrome may actually use it. */
+const MIN_SIZE = 13;
 const hits = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 export function labels() {
@@ -140,16 +144,45 @@ export function labels() {
             placed.push(box); y = cy; break outer;
           }
         }
-        if (y === null) continue;
+        // A label that cannot find space used to be dropped outright, which
+        // could silently delete "velocity" on a crowded frame. High-priority
+        // labels now take the furthest slot they can reach and draw a leader
+        // back to what they name; only low-priority chrome is still dropped.
+        let leader = null;
+        if (y === null) {
+          if (it.pri < 6) continue;
+          for (const step of [100, 130, 160, 190]) {
+            const cy = it.y + bias * step;
+            const box = { x: left(ax), y: cy - bh / 2, w: tw + 10, h: bh };
+            if (box.y < 2 || box.y + box.h > h - 2) continue;
+            if (placed.some((pB) => hits(pB, box))) continue;
+            placed.push(box); y = cy; leader = { x: it.x, y: it.y }; break;
+          }
+          if (y === null) continue;
+        }
 
         ctx.save();
         ctx.font = `${weight} ${size}px ${cssVar('--font', 'system-ui, sans-serif')}`;
         ctx.textAlign = align; ctx.textBaseline = 'middle';
-        if (o.bg !== false) {
-          ctx.fillStyle = cssVar('--surface', '#131210');
-          ctx.globalAlpha = 0.9;
-          ctx.fillRect(ax + off - 5, y - bh / 2, tw + 10, bh);
+        if (leader) {
+          ctx.strokeStyle = o.color || cssVar('--ink-muted', '#888');
+          ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(leader.x, leader.y); ctx.lineTo(ax, y); ctx.stroke();
           ctx.globalAlpha = 1;
+        }
+        if (o.bg !== false) {
+          // A plate is an opaque hole punched in the drawing. In the light
+          // theme eight of them were the brightest objects on the canvas, so
+          // the label now gets a halo in the surface colour instead: it lifts
+          // the text off whatever is behind it without erasing it.
+          ctx.save();
+          ctx.strokeStyle = cssVar('--surface', '#131210');
+          ctx.globalAlpha = 0.92; ctx.lineWidth = 4.5;
+          ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+          ctx.strokeText(it.text, ax, y);
+          ctx.globalAlpha = 0.5; ctx.lineWidth = 8;
+          ctx.strokeText(it.text, ax, y);
+          ctx.restore();
         }
         ctx.fillStyle = o.color || cssVar('--ink', '#fff');
         ctx.fillText(it.text, ax, y);

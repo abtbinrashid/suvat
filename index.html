@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./css/tokens.css">
 <link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/math.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'><path d='M3 26 Q15 -8 27 26' fill='none' stroke='%23c2410c' stroke-width='3' stroke-linecap='round'/></svg>">
 </head>
 <body>
@@ -43,7 +44,7 @@
   <main class="screen" id="screen-values">
     <div class="centre narrow">
       <p class="eyebrow" id="chosen"></p>
-      <h1 class="h-big">s u v a t</h1>
+      <h1 class="h-big m"><i class="m-var">s</i> <i class="m-var">u</i> <i class="m-var">v</i> <i class="m-var">a</i> <i class="m-var">t</i></h1>
       <p class="h-sub">Fill in what the question gives you and leave the rest blank. Any three of the five pin down the other two — and you do <b>not</b> need the angle of projection.</p>
 
       <div class="suvat" id="suvat"></div>
@@ -71,17 +72,43 @@
             <button data-dim="2d" aria-pressed="true">2D</button>
             <button data-dim="3d" aria-pressed="false">3D</button>
           </div>
+          <div class="seg views" id="view-seg" aria-label="Viewpoint" hidden>
+            <button data-view="touchline" aria-pressed="false">Touchline</button>
+            <button data-view="goal" aria-pressed="false">Behind the goal</button>
+            <button data-view="aerial" aria-pressed="false">Aerial</button>
+            <button data-view="district" aria-pressed="false">District</button>
+          </div>
+          <div class="seg" id="rate-seg" aria-label="Playback speed">
+            <button data-rate="1" aria-pressed="true">Real time</button>
+            <button data-rate="0.5" aria-pressed="false">0.5&times;</button>
+            <button data-rate="0.25" aria-pressed="false">0.25&times;</button>
+          </div>
           <label class="ck inline"><input type="checkbox" id="bounce-ck"><span class="box-ck"></span>Bounce</label>
           <div class="bounce-opts" id="bounce-opts" hidden>
             <span class="mini">restitution <b id="rest-val">0.70</b></span>
             <input type="range" id="restitution" min="0.1" max="0.95" step="0.05" value="0.7">
           </div>
+          <p class="place"><b id="place"></b><span id="place-note"></span></p>
         </div>
 
-        <div class="canvas-wrap">
+        <div class="canvas-wrap" id="canvas-wrap" data-resolve="off">
           <canvas id="scene" aria-label="Projectile motion"></canvas>
           <div class="hud hud-l" id="hud-left"></div>
           <div class="hud hud-r" id="hud-right"></div>
+
+          <!-- click the object, or anywhere on the arc: one instant, resolved -->
+          <div class="resolve" id="resolve" data-side="right" hidden>
+            <div class="res-card" role="dialog" aria-labelledby="res-title">
+              <p class="res-eyebrow">Resolved into components</p>
+              <h2 class="res-h" id="res-title">At t = 0.00 s</h2>
+              <div class="res-blocks" id="res-blocks"></div>
+              <p class="res-note" id="res-note"></p>
+              <div class="res-acts">
+                <button class="ghost sm" id="res-close">Close</button>
+                <button class="tbtn" id="res-go">Carry on</button>
+              </div>
+            </div>
+          </div>
 
           <!-- shown when the flight finishes: the whole of SUVAT, settled -->
           <div class="done" id="done" hidden>

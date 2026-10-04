@@ -1,14 +1,14 @@
 {
   "version": "0.0.1",
+  "autoPort": true,
   "configurations": [
     {
       "name": "suvat",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "dev-server.mjs",
-        "4173"
+        "dev-server.mjs"
       ],
-      "port": 4173
+      "port": 4386
     }
   ]
 }

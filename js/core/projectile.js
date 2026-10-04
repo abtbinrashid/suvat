@@ -9,6 +9,8 @@
 // motion has a = −g. The two are completely independent — which is the single
 // most important idea in the topic, and the one this playground exists to show.
 
+import { M, num, signed } from '../notation.js';
+
 export const GRAVITY = {
   earth:  { g: 9.81,  label: 'Earth',   sub: '9.81' },
   moon:   { g: 1.62,  label: 'Moon',    sub: '1.62' },
@@ -105,36 +107,37 @@ export function flight({ u, theta, h, g, azimuth = 0 }) {
 /** The working, written out — shown beside the playground so the numbers are never magic. */
 export function derivation(f) {
   const { u, theta, h, g } = f.params;
-  const d = (x, p = 2) => (isFinite(x) ? x.toFixed(p) : '∞');
+  const d = (x, p = 2) => num(x, p);
+  const sg = (x, p = 2) => signed(x, p);
   const steps = [
     {
       title: 'Resolve the launch velocity',
       lines: [
-        { tex: 'uₓ = u cos θ', sub: `uₓ = ${d(u)} × cos ${d(theta, 1)}° = ${d(f.horiz)} m s⁻¹` },
-        { tex: 'u_y = u sin θ', sub: `u_y = ${d(u)} × sin ${d(theta, 1)}° = ${d(f.uy)} m s⁻¹` },
+        { tex: M`u_x = u cos theta`, sub: M`u_x = ${d(u)} * cos ${sg(theta, 1)}° = ${d(f.horiz)} [m s^-1]` },
+        { tex: M`u_y = u sin theta`, sub: M`u_y = ${d(u)} * sin ${sg(theta, 1)}° = ${d(f.uy)} [m s^-1]` },
       ],
       note: 'Horizontal and vertical are now two separate 1D problems.',
     },
     {
-      title: 'Time of flight — vertical, s = ut + ½at²',
+      title: `Time of flight — vertical, ${M`s = ut + ½at^2`}`,
       lines: [
-        { tex: '0 = h + u_y t − ½g t²', sub: `0 = ${d(h)} + ${d(f.uy)}t − ½ × ${d(g)}t²` },
-        { tex: 't = (u_y + √(u_y² + 2gh)) / g', sub: `t = ${d(f.tFlight, 3)} s` },
+        { tex: M`0 = h + u_y t - ½g t^2`, sub: M`0 = ${d(h)} + ${sg(f.uy)}t - ½ * ${d(g)}t^2` },
+        { tex: M`t = (u_y + sqrt(u_y^2 + 2gh))/g`, sub: M`t = ${d(f.tFlight, 3)} [s]` },
       ],
       note: h > 0 ? 'Launched from a height, so the flight is not symmetric.' : 'Level ground, so the path is symmetric.',
     },
     {
-      title: 'Greatest height — vertical, v² = u² + 2as',
+      title: `Greatest height — vertical, ${M`v^2 = u^2 + 2as`}`,
       lines: [
-        { tex: 'at the top, v_y = 0', sub: `0 = ${d(f.uy)}² − 2 × ${d(g)} × (H − ${d(h)})` },
-        { tex: 'H = h + u_y² / 2g', sub: `H = ${d(f.apexHeight, 2)} m  at t = ${d(f.tApex, 3)} s` },
+        { tex: `At the top, ${M`v_y = 0`}`, sub: M`0 = ${sg(f.uy)}^2 - 2 * ${d(g)} * (H - ${d(h)})` },
+        { tex: M`H = h + u_y^2/(2g)`, sub: `${M`H = ${d(f.apexHeight, 2)} [m]`} at ${M`t = ${d(f.tApex, 3)} [s]`}` },
       ],
       note: 'Uses only vertical quantities — the horizontal motion is irrelevant here.',
     },
     {
-      title: 'Range — horizontal, a = 0 so s = uₓ t',
+      title: `Range — horizontal, ${M`a = 0`} so ${M`s = u_x t`}`,
       lines: [
-        { tex: 'R = uₓ × t_flight', sub: `R = ${d(f.horiz)} × ${d(f.tFlight, 3)} = ${d(f.range, 2)} m` },
+        { tex: M`R = u_x * t_{flight}`, sub: M`R = ${d(f.horiz)} * ${d(f.tFlight, 3)} = ${d(f.range, 2)} [m]` },
       ],
       note: 'No acceleration horizontally, so distance is just speed × time.',
     },

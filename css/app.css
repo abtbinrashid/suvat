@@ -266,3 +266,97 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; background: v
   .centre { padding: var(--sp-6) var(--sp-4) var(--sp-10); }
   .h-big { font-size: var(--fs-2xl); }
 }
+
+.seg.views button { padding: 0 var(--sp-3); }
+
+/* ── where the flight starts, named ─────────────────────────────────── */
+.place { margin: 0 0 0 auto; text-align: right; max-width: 42ch; line-height: 1.35; }
+.place b { display: block; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-strong); }
+.place span { font-size: var(--fs-xs); color: var(--ink-faint); }
+.place:empty { display: none; }
+@media (max-width: 1100px) { .place { display: none; } }
+
+/* ── resolving one instant into components ───────────────────────────────
+   Anchored to whichever side the object is NOT on, because a card over the
+   flight hides the one thing it is describing. The HUD steps aside while it
+   is open: every number the HUD showed is in here, and said better.
+
+   The two blocks scroll; the heading, the note and the buttons do not. On a
+   short laptop screen six rows of working will not fit, and a student who
+   cannot find the Close button is stuck. */
+.resolve {
+  position: absolute; top: var(--sp-3); bottom: var(--sp-3); z-index: 4;
+  width: min(348px, 44%); display: flex; flex-direction: column;
+  animation: res-in 180ms ease-out both;
+}
+.resolve[data-side='left']  { left: var(--sp-3); }
+.resolve[data-side='right'] { right: var(--sp-3); }
+@keyframes res-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.res-card {
+  display: flex; flex-direction: column; min-height: 0; max-height: 100%;
+  background: var(--card); border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl); box-shadow: 0 14px 36px rgba(0,0,0,.16);
+  padding: var(--sp-4);
+}
+.res-eyebrow { flex: none; font-size: var(--fs-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 1px; }
+.res-h { flex: none; font-size: var(--fs-lg); margin: 0 0 var(--sp-2); }
+.res-blocks {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 2px;
+  /* A card whose last row is sliced looks broken rather than scrollable. */
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+
+.rblock + .rblock { margin-top: var(--sp-3); }
+.rb-h {
+  font-size: var(--fs-xs); letter-spacing: 0.08em; text-transform: uppercase;
+  font-weight: 700; margin-bottom: 4px; padding-bottom: 3px;
+  border-bottom: 2px solid currentColor;
+}
+.rblock[data-hue='vel'] .rb-h { color: var(--vel); }
+.rblock[data-hue='disp'] .rb-h { color: var(--disp); }
+
+/* Colour is the quantity, dash is the direction — the same rule as the
+   diagram, so a row and the arrow it names are read the same way. */
+.rrow { padding: 7px 0 7px var(--sp-3); border-left: 3px solid var(--border); }
+.rblock[data-hue='vel'] .rrow { border-left-color: var(--vel); }
+.rblock[data-hue='disp'] .rrow { border-left-color: var(--disp); }
+.rrow[data-part='x'] { border-left-style: dashed; }
+.rrow[data-part='r'] { border-left-width: 5px; }
+.rrow + .rrow { border-top: 1px solid var(--border-soft); }
+
+.rrow-top { display: flex; align-items: baseline; gap: var(--sp-2); }
+.rrow-n { font-size: var(--fs-sm); color: var(--ink-strong); line-height: 1.25; }
+.rrow-v { margin-left: auto; font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; line-height: 1.15; }
+.rrow-v small { font-size: var(--fs-xs); font-weight: 400; color: var(--ink-muted); margin-left: 4px; letter-spacing: 0; }
+.rblock[data-hue='vel'] .rrow-v { color: var(--vel); }
+.rblock[data-hue='disp'] .rrow-v { color: var(--disp); }
+.rrow-f { font-size: var(--fs-xs); color: var(--ink-strong); margin-top: 2px; line-height: 1.35; word-break: break-word; }
+.rrow-note { font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.35; margin-top: 1px; }
+
+.res-note {
+  flex: none; font-size: var(--fs-xs); color: var(--ink-strong); line-height: 1.45;
+  margin: var(--sp-2) 0 0; padding: 6px var(--sp-3);
+  border-radius: var(--r-md); background: var(--accent-soft);
+}
+.res-note:empty { display: none; }
+.res-acts { flex: none; display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.res-acts .tbtn { flex: 1; }
+
+/* The card carries the readouts while it is open, so the HUD stands down. */
+.canvas-wrap[data-resolve='on'] .hud { display: none; }
+
+/* On a phone there is no side to stand on, so it takes the bottom of the
+   frame instead — the object is almost always in the upper half. Still
+   absolutely positioned: the canvas above it is, and a static card would end
+   up behind it. */
+/* On a phone there is no side to stand on, so it takes the bottom of the
+   frame instead — the object is almost always in the upper half. Fixed to the
+   VIEWPORT rather than to the stage, which on a narrow screen is wider than
+   the screen is. */
+@media (max-width: 860px) {
+  .resolve, .resolve[data-side='left'], .resolve[data-side='right'] {
+    position: fixed; left: var(--sp-2); right: var(--sp-2); width: auto;
+    top: auto; bottom: var(--sp-2); max-height: 62vh; z-index: 11;
+  }
+}

@@ -51,7 +51,8 @@ export function drawGrid2D(ctx, P, L, { w, h, sx, sy, px, py, cam }) {
    whole of perspective. */
 
 export function createCamera3D() {
-  return { yaw: 1.95, pitch: 0.42, dist: 120, target: { x: 0, y: 0, z: 0 }, fov: 50, auto: true };
+  return { yaw: 1.95, pitch: 0.42, dist: 120, target: { x: 0, y: 0, z: 0 }, fov: 50,
+           fit: true, touched: false };
 }
 
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
@@ -95,11 +96,32 @@ export function makeView3D(cam, w, h) {
     if (run.length > 1) runs.push(run);
     return runs;
   };
-  return { eye, point, segment, polyline, f };
+
+  /* Sutherland–Hodgman against the near plane, then project. A polygon that
+     straddles the camera must be cut, not dropped: the ground plane you are
+     standing on is exactly such a polygon, and dropping it loses the world. */
+  const clipPoly = (pts) => {
+    let cam = pts.map(toCam);
+    const out = [];
+    for (let i = 0; i < cam.length; i++) {
+      const a = cam[i], b = cam[(i + 1) % cam.length];
+      const ain = a.z >= NEAR, bin = b.z >= NEAR;
+      if (ain) out.push(a);
+      if (ain !== bin) {
+        const k = (NEAR - a.z) / (b.z - a.z);
+        out.push({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: NEAR });
+      }
+    }
+    return out.length < 3 ? null : out.map(proj);
+  };
+  const distTo = (p) => { const c = toCam(p); return Math.max(1, c.z); };
+
+  return { eye, point, segment, polyline, clipPoly, distTo, right, up, fwd, f };
 }
 
-export function fit3D(cam, reach, height, w, h) {
-  cam.target = { x: reach / 2, y: height * 0.45, z: 0 };
+/** Frame the flight once, in world coordinates, and then leave it alone. */
+export function fit3D(cam, reach, height, w, h, centre = { x: 0, z: 0 }, dirVec = { x: 1, z: 0 }) {
+  cam.target = { x: centre.x + dirVec.x * reach / 2, y: height * 0.45, z: centre.z + dirVec.z * reach / 2 };
   // The camera looks along a diagonal, so the flight's projected width is
   // larger than its extent in x — and perspective makes the near end bigger
   // still. Both want a good deal more margin than a flat fit would suggest.
@@ -108,6 +130,7 @@ export function fit3D(cam, reach, height, w, h) {
   const tanV = Math.tan((cam.fov * Math.PI) / 360);
   const aspect = w / h;
   cam.dist = Math.max(18, Math.max((rG * 2.1) / (tanV * aspect), (rV * 2.4) / tanV));
+  cam.fit = false;
 }
 
 export function drawGrid3D(ctx, P, L, V, { reach, w, h }) {

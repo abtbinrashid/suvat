@@ -53,9 +53,15 @@ export const D = {
   bench: { length: 8, depth: 2.4, roofH: 2.2, atZ: -36.5 },
 
   /* ── the bowl ────────────────────────────────────────────────────── */
-  // Plan is a rounded rectangle. All four fronts are straight across the
-  // middle of each side, which is where every cross-section is taken.
-  bowl: { halfL: 125, halfW: 100, cornerR: 45, outerWallH: 36 },
+  // Plan is a rounded rectangle, and — this matters — it is the SAME rounded
+  // rectangle as the front row, offset outward by the depth of the stand.
+  // Offsetting a rounded rectangle grows every radius by the same amount, so
+  // front (62 × 42, r 30) + 63 m of depth gives 125 × 105, r 93. The roof is
+  // generated from that identical offset: when the two were generated from
+  // different rounded rectangles, the corners did not meet and you could see
+  // the district through the gap.
+  bowl: { halfL: 125, halfW: 105, cornerR: 93, outerWallH: 36,
+          frontL: 62, frontW: 42, frontR: 30, depth: 63 },
 
   // A side is a list of elements, each measured as an OUTWARD distance d from
   // that side's front line. `tier` elements are generated row by row.
@@ -63,16 +69,17 @@ export const D = {
     // North and South: three tiers, boxes between the lower and the middle.
     NS: {
       front: 42,                            // |z| of the front row's nose
-      out: 58,                              // to the bowl wall at |z| = 100
+      out: 63,                              // to the bowl wall at |z| = 105
       el: [
         { t: 'tier',  d0: 0,    d1: 17.6, y0: 1.2,   y1: 10.0,  rows: 22, rowD: 0.80, rise: 0.40, name: 'lower tier' },
         { t: 'deck',  d0: 17.6, d1: 20.2, y0: 10.0,  y1: 10.0,  name: 'lower concourse' },
         { t: 'rail',  d0: 20.2, d1: 20.2, y0: 10.0,  y1: 11.1,  name: 'parapet' },
-        { t: 'glass', d0: 20.2, d1: 30.0, y0: 10.0,  y1: 14.0,  name: 'boxes' },
+        { t: 'glassWall', d0: 20.2, d1: 20.5, y0: 10.0, y1: 14.0, name: 'box glazing' },
+        { t: 'deck',  d0: 20.5, d1: 30.0, y0: 14.0,  y1: 14.0,  name: 'boxes, roof deck' },
         { t: 'tier',  d0: 30.0, d1: 36.4, y0: 14.0,  y1: 17.44, rows: 8,  rowD: 0.80, rise: 0.43, name: 'middle tier' },
         { t: 'wall',  d0: 36.4, d1: 38.0, y0: 17.44, y1: 25.0,  name: 'middle rear' },
         { t: 'tier',  d0: 36.0, d1: 53.6, y0: 25.0,  y1: 34.9,  rows: 22, rowD: 0.80, rise: 0.45, name: 'upper tier' },
-        { t: 'wall',  d0: 53.6, d1: 58.0, y0: 34.9,  y1: 36.0,  name: 'rear facade' },
+        { t: 'wall',  d0: 53.6, d1: 63.0, y0: 34.9,  y1: 36.0,  name: 'rear facade' },
       ],
     },
     // West: ONE steep tier. tan 34° = 0.67451, so 0.80 m treads rise 0.5396 m.
@@ -92,7 +99,8 @@ export const D = {
         { t: 'tier',  d0: 0,    d1: 16.0, y0: 1.2,   y1: 9.2,   rows: 20, rowD: 0.80, rise: 0.40, name: 'tier 1' },
         { t: 'deck',  d0: 16.0, d1: 18.5, y0: 9.2,   y1: 9.2,   name: 'concourse' },
         { t: 'rail',  d0: 18.5, d1: 18.5, y0: 9.2,   y1: 10.3,  name: 'parapet' },
-        { t: 'glass', d0: 18.5, d1: 27.0, y0: 9.2,   y1: 13.0,  name: 'boxes' },
+        { t: 'glassWall', d0: 18.5, d1: 18.8, y0: 9.2, y1: 13.0, name: 'box glazing' },
+        { t: 'deck',  d0: 18.8, d1: 27.0, y0: 13.0,  y1: 13.0,  name: 'boxes, roof deck' },
         { t: 'tier',  d0: 27.0, d1: 35.0, y0: 13.0,  y1: 17.2,  rows: 10, rowD: 0.80, rise: 0.42, name: 'tier 2' },
         { t: 'wall',  d0: 35.0, d1: 36.5, y0: 17.2,  y1: 21.5,  name: 'tier 2 rear' },
         { t: 'tier',  d0: 36.0, d1: 45.6, y0: 21.5,  y1: 26.78, rows: 12, rowD: 0.80, rise: 0.44, name: 'tier 3' },
@@ -183,11 +191,11 @@ export const D = {
      over the last quarter, so nothing ever pops. */
   lod: {
     bands: { pitch: 30, stadium: 300, district: 2000 },
-    netMesh: 60, grassBlades: 24, people: 200, boardPanels: 260,
-    pitchLines: 560, players: 340, seatRows: 130, seatTexture: 440,
-    roofCables: 950, floodDetail: 760, carParkBays: 950, cars: 1500,
-    treeDetail: 1200, treeBlob: 2600, houseDetail: 1500, houseBlock: 2800,
-    grassStripes: 1000, roadLines: 700,
+    netMesh: 260, grassBlades: 24, people: 230, boardPanels: 260,
+    pitchLines: 900, players: 340, seatRows: 130, seatTexture: 440,
+    roofCables: 950, floodDetail: 760, carParkBays: 950, cars: 1900,
+    treeDetail: 1200, treeBlob: 3400, houseDetail: 1500, houseBlock: 4200,
+    grassStripes: 1000, roadLines: 1100,
   },
 };
 

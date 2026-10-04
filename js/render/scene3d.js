@@ -1,53 +1,119 @@
-// scene3d.js — the same flight, seen in perspective.
+// scene3d.js — the same flight, standing in the same place, seen in perspective.
 //
-// The motion is identical to the 2D view. What changes is only the camera:
-// the ground becomes a plane you look across rather than a line you look at,
-// and the flight stands in a vertical plane on it. Drag to orbit.
+// The motion is identical to the 2D view and so is the world: this file reads
+// the very same records, extrudes them instead of cutting them, and puts the
+// camera somewhere you can orbit. Drag to orbit, scroll to zoom.
+//
+// The scenery is projected once per camera position into an offscreen canvas.
+// A flight never moves the camera, so during a flight exactly one bitmap is
+// blitted and the only live drawing is the ball and its arrows.
 
-import { fitCanvas, palette, stroke, arrow, dot, fmt, clamp, labels } from './util.js';
-import { drawGrid3D, makeView3D, fit3D } from './grid.js';
+import { fitCanvas, palette, stroke, arrow, dot, fmt, clamp, labels, cssVar } from './util.js';
+import { makeView3D, fit3D } from './grid.js';
+import { drawScenery3D, bearingName, farRings3D } from './world3d.js';
+import { tones, layer, zoomBand, BAND_LABEL, fade } from './world2d.js';
+import { siteFor, siteWorld } from '../world/world.js';
+import { D } from '../world/dims.js';
+
+let moving = false, movedAt = 0;
 
 export function render(canvas, cam3, o) {
-  const { traj: f, second, ghost, t, show, fired = true, markers = {} } = o;
+  const { traj: f, second, ghost, t, show, fired = true, markers = {}, scenario,
+          resolve = null, hover = null } = o;
   const { ctx, w, h } = fitCanvas(canvas);
   if (!f) return;
   const P = palette();
   const L = labels();
+  const tn = tones();
+  const site = siteFor(scenario?.id);
+  const toWorld = siteWorld(site);
+  const dirVec = site.axis === 'x' ? { x: site.dir, z: 0 } : { x: 0, z: site.dir };
 
   const end = f.pos(f.tMax);
   const reach = Math.max(10, isFinite(end.x) ? end.x : f.horiz * f.tMax);
-  if (cam3.auto) fit3D(cam3, reach, Math.max(f.apexHeight, f.params.h, 5), w, h);
+  const topY = Math.max(f.apexHeight, f.params.h, 5);
+  if (cam3.fit) {
+    fit3D(cam3, reach, topY, w, h, site.origin, dirVec);
+    // Far enough back that the flight is standing in a stadium rather than
+    // filling the frame on its own — the place is half the point.
+    cam3.dist = clamp(cam3.dist * 1.15, 120, 3000);
+    cam3.yaw = Math.atan2(dirVec.z, dirVec.x) - Math.PI * 0.68;
+    // Look DOWN into the bowl. A roof that covers every seat covers the view
+    // as well, so a camera outside the stadium and low sees nothing but a lid;
+    // the default has to clear the rim on the way in.
+    cam3.pitch = 0.62;
+  }
 
+  clearOfRoof(cam3);
   const V = makeView3D(cam3, w, h);
+  const span = (2 * cam3.dist * Math.tan((cam3.fov * Math.PI) / 360) * w) / h;
   const poly = (pts, st) => { for (const run of V.polyline(pts)) stroke(ctx, run, st); };
   const seg = (a, b, st) => { const q = V.segment(a, b); if (q) stroke(ctx, q, st); };
-  const P3 = (p) => ({ x: p.x, y: p.y, z: 0 });
+  const W = (p) => toWorld(p.x, p.y);
 
-  if (show.grid) drawGrid3D(ctx, P, L, V, { reach, w, h });
+  /* ── the world ────────────────────────────────────────────────────── */
+  sky3D(ctx, w, h, tn);
+  const detail = !moving || performance.now() - movedAt > 220;
+  const key = [w, h, document.documentElement.dataset.theme,
+               cam3.yaw.toFixed(3), cam3.pitch.toFixed(3), cam3.dist.toFixed(2),
+               cam3.target.x.toFixed(1), cam3.target.y.toFixed(1), cam3.target.z.toFixed(1),
+               detail ? 'hi' : 'lo'].join('|');
+  const bg = layer('scenery3d', w, h, key, (g) => {
+    g.clearRect(0, 0, w, h);
+    drawScenery3D(g, V, { w, h, span, detail });
+    farRings3D(g, V, tn, span);
+    horizonHaze(g, V, w, h, tn);
+  });
+  ctx.drawImage(bg, 0, 0, w, h);
 
-  if (ghost && show.path) poly(ghost.map(P3), { color: P.faint, width: 2.8 });
+  if (show.grid) metreGrid3D(ctx, V, P, L, { reach, site, w, h });
 
-  if (second) {
-    poly(second.path(200).map(P3), { color: P.second, width: 3.2, dash: [9, 6], alpha: .9 });
+  /* ── markers ──────────────────────────────────────────────────────── */
+  if (markers.heightLine != null) {
+    const a = W({ x: -reach * 0.15, y: markers.heightLine }), b = W({ x: reach * 1.15, y: markers.heightLine });
+    seg(a, b, { color: P.mark, width: 2.4, dash: [10, 7], alpha: 0.9 });
+    const m = V.point(b);
+    if (m) L.add(`${fmt(markers.heightLine, 1)} m`, m.x + 10, m.y, { color: P.mark, pri: 6, size: 16 });
+  }
+  if (markers.obstacle) {
+    const half = D.goal.width / 2;
+    const base = toWorld(markers.obstacle.x, 0), top = toWorld(markers.obstacle.x, markers.obstacle.height);
+    const across = site.axis === 'x' ? { x: 0, z: 1 } : { x: 1, z: 0 };
+    const pts = [-half, half].map((s) => ({ x: base.x + across.x * s, y: 0, z: base.z + across.z * s }));
+    poly([pts[0], { ...pts[0], y: top.y }, { ...pts[1], y: top.y }, pts[1]], { color: P.mark, width: 3 });
+  }
+  if (markers.target) {
+    const p = V.point(W(markers.target));
+    if (p) { dot(ctx, p.x, p.y, 12, { stroke: P.mark, width: 3 }); dot(ctx, p.x, p.y, 4, { fill: P.mark }); }
   }
 
+  /* ── paths ────────────────────────────────────────────────────────── */
+  if (ghost && show.path) poly(ghost.map(W), { color: P.faint, width: 2.8 });
+  if (second) poly(second.path(200).map(W), { color: P.second, width: 3.2, dash: [9, 6], alpha: .9 });
   if (show.path && fired) {
-    poly(f.path(260, t).concat([{ t, ...f.pos(t) }]).map(P3), { color: P.vel, width: 4.2 });
+    const pts = f.path(260, t).concat([{ t, ...f.pos(t) }]).map(W);
+    poly(pts, { color: P.surface, width: 7.2, alpha: 0.45 });
+    poly(pts, { color: P.vel, width: 4.2 });
   }
 
-  // launch mast
-  if (f.params.h > 0) seg({ x: 0, y: 0, z: 0 }, { x: 0, y: f.params.h, z: 0 }, { color: P.strong, width: 3.4 });
+  // The launch mast drops to the DECK the launch sits on, not to y = 0 —
+  // from the front row of an upper tier, the ground is 25 m of stand away.
+  if (f.params.h > 0) {
+    const foot = deckUnder(site);
+    seg(toWorld(0, foot), toWorld(0, f.params.h), { color: P.strong, width: 3, dash: [7, 5] });
+  }
 
   const now = f.pos(fired ? t : 0), v = f.vel(fired ? t : 0);
-  const p = V.point(P3(now));
+  const wp = W(now);
+  const p = V.point(wp);
   if (p) {
-    // a dropped line to the ground is what makes the height readable in 3D
-    seg(P3(now), { x: now.x, y: 0, z: 0 }, { color: P.disp, width: 2.2, dash: [6, 6] });
-    const sh = V.point({ x: now.x, y: 0, z: 0 });
+    // the dropped line to the ground is what makes "height" a thing you can see
+    seg(wp, { ...wp, y: 0 }, { color: P.disp, width: 2.2, dash: [6, 6] });
+    const sh = V.point({ ...wp, y: 0 });
     if (sh) dot(ctx, sh.x, sh.y, 4, { fill: P.disp });
 
-    if (fired && show.velocity) {
-      const e = V.point({ x: now.x + v.x * 0.55, y: now.y + v.y * 0.55, z: 0 });
+    if (fired && show.velocity && !resolve) {
+      const e = V.point(W({ x: now.x + v.x * 0.55, y: now.y + v.y * 0.55 }));
       if (e) {
         arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 3.8, head: 15 });
         L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, e.x + 12, e.y - 12,
@@ -55,42 +121,348 @@ export function render(canvas, cam3, o) {
       }
     }
     if (fired && show.acceleration && f.params.g > 0) {
-      const e = V.point({ x: now.x, y: now.y - f.params.g * 0.4, z: 0 });
+      const e = V.point({ ...wp, y: now.y - f.params.g * 0.4 });
       if (e) arrow(ctx, p.x, p.y, e.x, e.y, { color: P.acc, width: 3.2, head: 13 });
     }
 
-    const r = clamp(V.f / Math.max(1, V.point(P3(now))?.z ?? 50) * 0.5, 5, 11);
-    dot(ctx, p.x, p.y, r, { fill: P.vel });
-    if (fired) dot(ctx, p.x, p.y, r + 6, { stroke: P.vel, width: 1.8 });
+    // the ball at its real 0.22 m, with the ring that keeps it findable
+    const rpx = (D.prop.ball / 2) * (V.f / V.distTo(wp));
+    dot(ctx, p.x, p.y, Math.max(1.6, rpx), { fill: P.vel });
+    dot(ctx, p.x, p.y, Math.max(11, rpx + 7), { stroke: P.vel, width: fired ? 2 : 1.4 });
+
+    /* ── resolving, at the instant that was clicked ─────────────────── */
+    // Only ever two components. The bearing is how the flight is placed in
+    // the world, not a third thing to resolve, so 3D resolves exactly what
+    // 2D resolves and the extra dimension is there to look along.
+    if (fired && resolve) {
+      dot(ctx, p.x, p.y, Math.max(15, rpx + 11), { stroke: P.vel, width: 2.2 });
+      const sq = Math.max(0.4, Math.max(reach, topY) * 0.022);
+
+      if (!resolve.vertical) {
+        tri3D(ctx, L, V, W, {
+          a: { x: 0, y: f.params.h }, c: { x: now.x, y: f.params.h }, b: { x: now.x, y: now.y },
+          color: P.disp, width: 2.4, alpha: 0.95, pri: 12, sq,
+          labelX: `horizontal ${fmt(resolve.sx, 1)} m`,
+          labelY: `vertical ${fmt(resolve.sy, 1)} m`,
+          labelR: `${fmt(resolve.dist, 1)} m from the launch`,
+        });
+      }
+
+      const mpp = V.distTo(wp) / V.f;            // metres per pixel, at the ball
+      const k = resolve.speed > 1e-6
+        ? clamp((165 * mpp) / resolve.speed, 0.04, (Math.max(reach, topY) * 0.6) / resolve.speed)
+        : 0.5;
+      if (resolve.vertical) {
+        const e = V.point(W({ x: now.x, y: now.y + v.y * k }));
+        if (e) {
+          arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 4.2, head: 16 });
+          L.add(`vertical ${fmt(v.y, 1)} m s⁻¹ · no horizontal component`, e.x + 12, e.y,
+                { color: P.vel, pri: 16, size: 17, weight: 600 });
+        }
+      } else {
+        tri3D(ctx, L, V, W, {
+          a: { x: now.x, y: now.y },
+          c: { x: now.x + v.x * k, y: now.y },
+          b: { x: now.x + v.x * k, y: now.y + v.y * k },
+          color: P.vel, width: 3.4, pri: 16, sq,
+          labelX: `horizontal ${fmt(v.x, 1)} m s⁻¹`,
+          labelY: `vertical ${fmt(v.y, 1)} m s⁻¹`,
+          labelR: `${fmt(resolve.speed, 2)} m s⁻¹ at ${fmt(resolve.velocity.angle, 1)}°`,
+        });
+      }
+    } else if (fired && hover) {
+      dot(ctx, p.x, p.y, Math.max(16, rpx + 12), { stroke: P.vel, width: 2 });
+      L.add('click to resolve', p.x, p.y - 34,
+            { color: P.vel, align: 'center', pri: 9, size: 15, weight: 600 });
+    }
+  }
+  if (second) {
+    const q = V.point(W(second.pos(clamp(t, 0, second.tMax))));
+    if (q && t > 0) { dot(ctx, q.x, q.y, 4, { fill: P.second }); dot(ctx, q.x, q.y, 11, { stroke: P.second, width: 1.6 }); }
   }
 
-  L.add('drag to orbit · scroll to zoom', w - 12, h - 14,
-        { color: P.faint, align: 'right', pri: 4, size: 15, bg: false });
+  if (show.apex && f.apexInFlight) {
+    const a = V.point(W({ x: f.horiz * f.tApex, y: f.apexHeight }));
+    if (a) { dot(ctx, a.x, a.y, 4.5, { fill: P.ink });
+      L.add(`greatest height ${fmt(f.apexHeight, 2)} m`, a.x, a.y - 24, { color: P.ink, align: 'center', pri: 8, size: 18, weight: 600 }); }
+  }
+
+  if (!fired) {
+    const lp = V.point(toWorld(0, f.params.h));
+    if (lp) L.add(site.place, lp.x, lp.y - 28, { color: P.muted, align: 'center', pri: 4, size: 15 });
+  }
+
+  groundScaleBar(ctx, V, L, P);
+  heightLadder(ctx, V, L, P, toWorld, Math.max(f.apexHeight, f.params.h), deckUnder(site));
+  L.add(`${BAND_LABEL[zoomBand(span)]} · looking ${bearingName(cam3.yaw)} · eye ${fmt(V.eye.y, 0)} m up · 1 unit = 1 m`,
+        18, h - 32, { color: P.muted, pri: 11, size: 13, bg: false });
+  L.add('drag to orbit · scroll to zoom · double-click to refit', w - 12, h - 14,
+        { color: P.faint, align: 'right', pri: 4, size: 13, bg: false });
   L.draw(ctx, w, h);
+  cam3._V = V; cam3._W = W; cam3._ball = p ? { x: p.x, y: p.y } : null;
 }
 
-export function attachControls3D(canvas, cam3, onChange) {
-  let drag = false, lx = 0, ly = 0;
+/* ── the resolve figure, in the plane of the flight ──────────────────────
+   The same triangle as the 2D view, but its corners are world points, so
+   perspective does the work and the figure stands in the stadium rather than
+   being pasted on the glass. Flight coordinates in, screen out. */
+function tri3D(ctx, L, V, W, A) {
+  const { a, c, b, color, width = 3, alpha = 1, pri = 14, sq = 0,
+          labelX, labelY, labelR } = A;
+  const pa = V.point(W(a)), pc = V.point(W(c)), pb = V.point(W(b));
+  if (!pa || !pc || !pb) return;
+  if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < 6) return;
+
+  ctx.save(); ctx.globalAlpha = alpha;
+  arrow(ctx, pa.x, pa.y, pc.x, pc.y, { color, width, head: 11, dash: [7, 5] });
+  arrow(ctx, pc.x, pc.y, pb.x, pb.y, { color, width, head: 11 });
+  arrow(ctx, pa.x, pa.y, pb.x, pb.y, { color, width: width + 1.1, head: 15 });
+  ctx.restore();
+
+  if (sq > 0 && Math.abs(c.x - a.x) > sq * 2 && Math.abs(b.y - c.y) > sq * 2) {
+    const ix = -Math.sign(c.x - a.x) * sq, iy = Math.sign(b.y - c.y) * sq;
+    const q = [{ x: c.x + ix, y: c.y }, { x: c.x + ix, y: c.y + iy }, { x: c.x, y: c.y + iy }]
+      .map((o) => V.point(W(o)));
+    if (q.every(Boolean)) stroke(ctx, q, { color, width: 1.6, alpha: alpha * 0.85 });
+  }
+
+  const away = pb.y > pa.y ? 18 : -18;
+  const side = pc.x >= pa.x ? 1 : -1;
+  if (labelX) L.add(labelX, (pa.x + pc.x) / 2, (pa.y + pc.y) / 2 - away,
+                    { color, align: 'center', pri, size: 16, weight: 600, maxPush: 40 });
+  if (labelY) L.add(labelY, pc.x + side * 14, (pc.y + pb.y) / 2,
+                    { color, align: side > 0 ? 'left' : 'right', pri, size: 16, weight: 600, maxPush: 40 });
+  if (labelR) L.add(labelR, pb.x + side * 14, pb.y + (pb.y > pa.y ? 16 : -16),
+                    { color, align: side > 0 ? 'left' : 'right', pri: pri + 2, size: 18, weight: 700 });
+}
+
+/** Where the ground plane runs out. Without it the district ends on a blade. */
+function horizonHaze(ctx, V, w, h, tn) {
+  const far = V.point({ x: V.eye.x + V.fwd.x * 90000, y: 0, z: V.eye.z + V.fwd.z * 90000 });
+  const y = far ? far.y : h * 0.35;
+  if (y < -200 || y > h + 200) return;
+  const g = ctx.createLinearGradient(0, y - 70, 0, y + 8);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, tn.skyBottom);
+  ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = g;
+  ctx.fillRect(0, y - 70, w, 78); ctx.restore();
+}
+
+/** A stick of known length, laid on the ground in the plane of the flight.
+    A scale bar in screen pixels means nothing in perspective; one lying in
+    the world foreshortens with everything else, which is the point. */
+function groundScaleBar(ctx, V, L, P) {
+  // Laid along the south touchline: open ground, in view from every angle,
+  // and never inside a building. A bar drawn in the flight plane ended up
+  // buried in the north stand and painted straight over the roof, because
+  // overlays have no depth buffer to be occluded by.
+  const z = (V.eye.z > 0 ? -1 : 1) * (D.pitch.halfW - 2), y = 0.06;
+  const a = V.point({ x: -D.pitch.halfL + 4, y, z });
+  if (!a) return;
+  for (const len of [100, 50, 20, 10, 5]) {
+    const b = V.point({ x: -D.pitch.halfL + 4 + len, y, z });
+    if (!b) continue;
+    const px = Math.hypot(b.x - a.x, b.y - a.y);
+    if (px < 60 || px > 460) continue;
+    stroke(ctx, [a, b], { color: cssVar('--ink-strong', '#888'), width: 2.4 });
+    for (const q of [a, b]) {
+      const n = { x: -(b.y - a.y) / px, y: (b.x - a.x) / px };
+      stroke(ctx, [{ x: q.x - n.x * 6, y: q.y - n.y * 6 }, { x: q.x + n.x * 6, y: q.y + n.y * 6 }],
+             { color: cssVar('--ink-strong', '#888'), width: 2.4 });
+    }
+    L.add(`${len} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 + 15,
+          { color: P.strong, align: 'center', pri: 11, size: 13 });
+    return;
+  }
+}
+
+/** Heights, read off the launch point itself. */
+function heightLadder(ctx, V, L, P, toWorld, topY, foot) {
+  const step = topY > 70 ? 20 : topY > 28 ? 10 : 5;
+  const top = Math.ceil(topY / step) * step;
+  const base = V.point(toWorld(0, foot));
+  const p0 = V.point(toWorld(0, 0)), p1 = V.point(toWorld(0, step));
+  if (!base || !p0 || !p1) return;
+  // Rungs closer together than they are tall cannot be read, and a label
+  // queue that shuffles them to find space turns a ruler into a word search.
+  if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 17) return;
+  for (let y = step; y <= top; y += step) {
+    const a = V.point(toWorld(0, y)), b = V.point(toWorld(-step * 0.22, y));
+    if (!a || !b) continue;
+    stroke(ctx, [a, b], { color: cssVar('--border', '#888'), width: 1.4 });
+    L.add(`${y}`, b.x - 6, b.y, { color: P.muted, align: 'right', pri: -1, size: 13, bg: false, maxPush: 0 });
+  }
+  const t = V.point(toWorld(0, top));
+  if (t) stroke(ctx, [base, t], { color: cssVar('--border', '#888'), width: 1.2, dash: [4, 5] });
+}
+
+/** Keep the eye out of the roof slab.
+    The roof is 43–48 m of solid geometry over an ellipse 250 × 200 m wide.
+    An eye inside it sees nothing but the underside, which is how the
+    "touchline" view came to be a grey void — and a student orbiting by hand
+    can wander in just as easily, so the camera is pushed out of it here. */
+function clearOfRoof(cam3) {
+  const R = D.roof, B = D.bowl;
+  for (let i = 0; i < 24; i++) {
+    const cp = Math.cos(cam3.pitch);
+    const e = { x: cam3.target.x + cam3.dist * cp * Math.cos(cam3.yaw),
+                y: cam3.target.y + cam3.dist * Math.sin(cam3.pitch),
+                z: cam3.target.z + cam3.dist * cp * Math.sin(cam3.yaw) };
+    if (e.y < R.fasciaBottom - 1.5 || e.y > R.fasciaTop + 1.5) return;
+    // inside the bowl's plan?
+    const qx = Math.max(Math.abs(e.x) - (B.halfL - B.cornerR), 0);
+    const qz = Math.max(Math.abs(e.z) - (B.halfW - B.cornerR), 0);
+    if (Math.hypot(qx, qz) + Math.min(Math.max(qx, qz), 0) - B.cornerR > 2) return;
+    // inside the opening, where there is no roof?
+    if ((e.x / R.ringA) ** 2 + (e.z / R.ringB) ** 2 < 0.94) return;
+    cam3.pitch = clamp(cam3.pitch + 0.045, 0.02, 1.45);
+  }
+}
+
+function sky3D(ctx, w, h, tn) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, tn.skyTop); g.addColorStop(1, tn.skyBottom);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+}
+
+/** The optional metre grid, laid on the ground in the plane of the flight. */
+function metreGrid3D(ctx, V, P, L, { reach, site }) {
+  const step = reach > 400 ? 100 : reach > 120 ? 20 : 10;
+  const n = Math.ceil(reach / step) + 2;
+  const across = site.axis === 'x' ? { x: 0, z: 1 } : { x: 1, z: 0 };
+  const along = site.axis === 'x' ? { x: site.dir, z: 0 } : { x: 0, z: site.dir };
+  const at = (a, c) => ({ x: site.origin.x + along.x * a + across.x * c, y: 0.05,
+                          z: site.origin.z + along.z * a + across.z * c });
+  const lim = step * 4;
+  for (let i = -1; i <= n; i++) {
+    const a = i * step;
+    const q = V.segment(at(a, -lim), at(a, lim));
+    if (q) stroke(ctx, q, { color: i === 0 ? P.gridMajor : P.grid, width: i === 0 ? 2 : 1.2 });
+    const lab = V.point(at(a, 0));
+    if (lab && a >= 0) L.add(fmt(a, 0), lab.x, lab.y + 14, { color: P.faint, align: 'center', pri: -2, size: 13, bg: false });
+  }
+  for (let j = -4; j <= 4; j++) {
+    const q = V.segment(at(-step, j * step), at(n * step, j * step));
+    if (q) stroke(ctx, q, { color: j === 0 ? P.gridMajor : P.grid, width: j === 0 ? 2 : 1.2 });
+  }
+}
+
+export function attachControls3D(canvas, cam3, onChange, getScene, onResolve = {}) {
+  let drag = false, lx = 0, ly = 0, down = null, hovering = false;
+
+  const active = () => (getScene?.() || {});
+
+  /** The object, or anywhere on the arc already flown. No handles up here. */
+  const pick = (e) => {
+    const { traj, t, fired, dim } = active();
+    const V = cam3._V, W = cam3._W;
+    if (dim !== '3d' || !traj || !fired || !V || !W) return null;
+    const r = canvas.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+    const bp = V.point(W(traj.pos(t)));
+    if (bp && Math.hypot(mx - bp.x, my - bp.y) < 26) return { kind: 'ball', t };
+    if (t > 1e-6) {
+      let best = null;
+      for (const q of traj.path(150, t)) {
+        const sp = V.point(W(q));
+        if (!sp) continue;
+        const dd = Math.hypot(mx - sp.x, my - sp.y);
+        if (dd < 15 && (!best || dd < best.d)) best = { d: dd, t: q.t };
+      }
+      if (best) return { kind: 'path', t: best.t };
+    }
+    return null;
+  };
+
+  canvas.addEventListener('pointermove', (e) => {
+    // Both cameras listen on this one canvas, so each leaves the cursor alone
+    // when its own view is not the one on screen.
+    if (active().dim !== '3d' || drag) return;
+    const hv = !!pick(e);
+    canvas.style.cursor = hv ? 'pointer' : 'grab';
+    if (hv !== hovering) { hovering = hv; onResolve.hover?.(hv); }
+  });
+
   canvas.addEventListener('pointerdown', (e) => {
+    down = { x: e.clientX, y: e.clientY, pick: pick(e) };
     drag = true; lx = e.clientX; ly = e.clientY;
     canvas.setPointerCapture(e.pointerId); canvas.style.cursor = 'grabbing';
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag) return;
+    moving = true; movedAt = performance.now(); cam3.touched = true;
     cam3.yaw += (e.clientX - lx) * 0.008;
-    cam3.pitch = clamp(cam3.pitch - (e.clientY - ly) * 0.006, 0.05, 1.4);
+    cam3.pitch = clamp(cam3.pitch - (e.clientY - ly) * 0.006, 0.02, 1.45);
     lx = e.clientX; ly = e.clientY; onChange();
   });
-  const end = (e) => {
-    drag = false; canvas.style.cursor = 'grab';
+  const end = (e, clicked) => {
+    const was = down;
+    drag = false; moving = false; down = null; canvas.style.cursor = 'grab';
     if (e && canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-  };
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault(); cam3.auto = false;
-    cam3.dist = clamp(cam3.dist * Math.exp(e.deltaY * 0.0012), 6, 5000);
+    // A press that did not move is a click; anything else was an orbit.
+    if (clicked && was?.pick && e && Math.hypot(e.clientX - was.x, e.clientY - was.y) < 5) {
+      onResolve.click?.(was.pick.t);
+    }
     onChange();
+  };
+  canvas.addEventListener('pointerup', (e) => end(e, true));
+  canvas.addEventListener('pointercancel', (e) => end(e, false));
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    moving = true; movedAt = performance.now(); cam3.touched = true;
+    cam3.dist = clamp(cam3.dist * Math.exp(e.deltaY * 0.0012), 8, 6000);
+    onChange();
+    clearTimeout(attachControls3D._t);
+    attachControls3D._t = setTimeout(() => { moving = false; onChange(); }, 180);
   }, { passive: false });
-  canvas.addEventListener('dblclick', () => { cam3.auto = true; onChange(); });
+  canvas.addEventListener('dblclick', () => { cam3.fit = true; cam3.touched = false; onChange(); });
+}
+
+/** Named viewpoints, so "behind the goal" is one click rather than a drag.
+    They are fixed to the WORLD, not to the flight: the place is the constant
+    and the flight is the thing that moves around inside it. */
+/** The height of whatever the launch point stands on, so the mast has a foot.
+    From the front row of an upper tier, the ground is 25 m of stand away;
+    dropping the mast to y = 0 ran it through the building. */
+function deckUnder(site) {
+  const perp = site.axis === 'x' ? Math.abs(site.origin.x) : Math.abs(site.origin.z);
+  const spec = site.axis === 'x' ? (site.origin.x < 0 ? D.sides.W : D.sides.E) : D.sides.NS;
+  const d = perp - spec.front;
+  if (d < 0 || d > spec.out) return 0;                 // over open ground
+  let y = 0;
+  for (const el of spec.el) {
+    if (d < Math.min(el.d0, el.d1) - 1e-9 || d > Math.max(el.d0, el.d1) + 1e-9) continue;
+    const k = Math.abs(el.d1 - el.d0) < 1e-9 ? 0 : (d - el.d0) / (el.d1 - el.d0);
+    y = Math.max(y, el.y0 + (el.y1 - el.y0) * k);
+  }
+  return y;
+}
+
+export const VIEWS = {
+  // Eye positions chosen inside or over the bowl: anywhere outside it and low
+  // down, a roof that covers every seat covers the flight too.
+  // A television camera high on the south side. Yaw is deliberately OFF the
+  // halfway line: dead square to the flight plane, a parabola collapses into
+  // a vertical stick, which is the one thing this view must not do.
+  // Eye over the south run-off, 36 m up, inside the roof opening: the one
+  // place a camera can sit on the touchline side and still see sky.
+  touchline: { yaw: 2.01, pitch: 0.30, dist: 104, target: { x: 0, y: 22, z: -16 } },
+  // Behind the west goal, up in the single steep tier, again off-axis.
+  // Behind the west goal, over the run-off and inside the opening.
+  goal:      { yaw: 3.00, pitch: 0.28, dist: 108, target: { x: 14, y: 18, z: 0 } },
+  // High and oblique: straight down through the opening shows only a lid.
+  aerial:    { yaw: 2.35, pitch: 0.86, dist: 300, target: { x: 0, y: 8, z: 0 } },
+  // Far enough out for the district, close enough for the bowl to read.
+  district:  { yaw: 2.05, pitch: 0.42, dist: 780, target: { x: 0, y: 30, z: 0 } },
+};
+export function setView(cam3, name, site) {
+  const v = VIEWS[name]; if (!v) return;
+  Object.assign(cam3, { yaw: v.yaw, pitch: v.pitch, dist: v.dist,
+                        target: { ...v.target }, fit: false, touched: true });
+  // keep the flight in frame: nudge the target towards where it happens
+  if (site && name !== 'district') {
+    cam3.target.x = cam3.target.x * 0.6 + site.origin.x * 0.4;
+    cam3.target.z = cam3.target.z * 0.6 + site.origin.z * 0.4;
+  }
 }

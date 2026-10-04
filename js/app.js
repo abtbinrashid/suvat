@@ -8,12 +8,15 @@ import { solveLaunch } from './core/solve.js';
 import { trajectory } from './core/trajectory.js';
 import { flight } from './core/projectile.js';
 import { SCENARIOS, GROUPS, GRAVITY, byId } from './scenarios.js';
-import { buildWorking, obstacleCheck } from './working.js';
+import { buildWorking, obstacleCheck, resolveAt } from './working.js';
 import * as scene from './render/scene.js';
 import * as scene3d from './render/scene3d.js';
 import { createCamera3D } from './render/grid.js';
+import { siteFor } from './world/world.js';
+import { dropToneCache } from './render/world2d.js';
 import { drawGraph, graphSpecs } from './render/graphs.js';
-import { fmt, palette } from './render/util.js';
+import { fmt, palette, clamp } from './render/util.js';
+import { M } from './notation.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,7 +35,8 @@ const SHOWS = [
   { key: 'acceleration', label: 'Acceleration' },
   { key: 'apex',         label: 'Greatest height' },
   { key: 'range',        label: 'Horizontal displacement' },
-  { key: 'grid',         label: 'Grid' },
+  { key: 'grid',         label: 'Metre grid' },
+  { key: 'ruler',        label: 'Height ruler' },
 ];
 const EXTRAS = [
   { key: 'graphs',  label: 'Graphs against time' },
@@ -45,10 +49,12 @@ const state = {
   given: {}, mass: 1,
   bounce: false, restitution: 0.7,
   dim: '2d', t: 0, playing: false, launched: false, firedBefore: false,
-  show: { path: true, velocity: true, apex: true, range: true, grid: true,
+  rate: 1,
+  show: { path: true, velocity: true, apex: true, range: true, grid: false, ruler: true,
           components: false, ticks: false, acceleration: false },
   extras: { graphs: false, working: false, energy: false },
   options: false,
+  resolve: false, hover: false,
 };
 
 const cam = scene.createCamera();
@@ -229,10 +235,11 @@ function buildSecond(p) {
 /* ── step 3 · flight ────────────────────────────────────────────────── */
 function launch() {
   if (!traj) return;
+  closeResolve();
   if (state.firedBefore) ghost = traj.path(260);
   state.firedBefore = true; state.launched = true;
   state.t = 0; state.playing = true;
-  cam.auto = true; cam3.auto = true;
+  cam.fit = true; cam3.fit = true;
   setPlayIcon(true);
   hideDone();
   go('flight');
@@ -248,7 +255,7 @@ function go(step) {
 
 function togglePlay() {
   if (!traj) return;
-  hideDone();
+  hideDone(); closeResolve();
   if (state.t >= traj.tMax) state.t = 0;
   state.playing = !state.playing; setPlayIcon(state.playing); dirty = true;
 }
@@ -258,6 +265,65 @@ function setPlayIcon(on) {
     : '<path d="M8 5v14l11-7z"/>';
   $('play').dataset.playing = String(on);
   $('play').setAttribute('aria-label', on ? 'Pause' : 'Play');
+}
+
+/* ── resolving one instant into components ──────────────────────────────
+   Point at the object — or anywhere on the arc behind it — and the flight
+   stops where it is and splits the velocity and the displacement into a
+   horizontal part and a vertical part. It is the first line of every
+   projectile answer, on the instant the student chose rather than on the
+   instant the question chose. */
+function openResolve(t) {
+  if (!traj || state.step !== 'flight') return;
+  hideDone();
+  state.t = clamp(t ?? state.t, 0, traj.tMax);
+  state.playing = false; setPlayIcon(false);
+  state.resolve = true; state.hover = false;
+  dirty = true;
+}
+
+function closeResolve() {
+  if (!state.resolve) return;
+  state.resolve = false;
+  $('resolve').hidden = true;
+  $('canvas-wrap').dataset.resolve = 'off';
+  dirty = true;
+}
+
+function renderResolve(R) {
+  const box = $('resolve');
+  $('canvas-wrap').dataset.resolve = R ? 'on' : 'off';
+  if (!R) { box.hidden = true; return; }
+
+  $('res-title').textContent = `At t = ${fmt(R.t, 2)} s`;
+
+  const row = (q, part) => `
+    <div class="rrow" data-part="${part}">
+      <div class="rrow-top"><span class="rrow-n">${q.name}</span>
+        <b class="rrow-v">${fmt(q.value, 2)}<small>${q.unit}</small></b></div>
+      <div class="rrow-f">${q.formula}${q.sub ? ` = ${q.sub}` : ''}</div>
+      <div class="rrow-note">${q.note}</div>
+    </div>`;
+  // A vertical launch has no horizontal part and therefore no resultant to
+  // find — printing a row of zeroes would teach the wrong thing.
+  const block = (b) => `<div class="rblock" data-hue="${b.hue}">
+      <div class="rb-h">${b.name}</div>
+      ${R.vertical ? row(b.y, 'y') : row(b.x, 'x') + row(b.y, 'y') + row(b.r, 'r')}
+    </div>`;
+  $('res-blocks').innerHTML = block(R.velocity) + block(R.displacement);
+
+  $('res-note').textContent = R.vertical
+    ? 'The motion is vertical, so there is no horizontal component. Drag the time slider to watch the vertical one change.'
+    : R.after
+      ? 'Past the first bounce the launch speed and angle no longer describe this part of the flight, so the components are given as numbers. The horizontal one is still unchanged — a smooth, level floor does not alter it.'
+      : `${R.convention} Drag the time slider to watch the components change.`;
+
+  // The card stands on the side the object is not on, so it never covers the
+  // thing it is describing.
+  const bx = state.dim === '3d' ? cam3._ball?.x : cam._map?.ball?.x;
+  const wide = $('canvas-wrap').getBoundingClientRect().width;
+  if (bx != null && wide > 0) box.dataset.side = bx < wide / 2 ? 'right' : 'left';
+  box.hidden = false;
 }
 
 /* ── readouts, on the diagram ───────────────────────────────────────── */
@@ -289,6 +355,9 @@ function renderHud() {
   }
   $('hud-left').innerHTML = left.join('');
   $('hud-right').innerHTML = b('Time elapsed', fmt(state.t, 2), 's');
+  const site = siteFor(state.id);
+  $('place').textContent = site.place;
+  $('place-note').textContent = site.note || '';
 }
 
 /* ── the landing card: the whole of SUVAT, once it has settled ───────── */
@@ -354,8 +423,10 @@ function renderWorking() {
 /* ── loop ───────────────────────────────────────────────────────────── */
 function draw() {
   if (state.step !== 'flight' || !traj) { dirty = false; return; }
+  const R = state.resolve ? resolveAt(traj, state.t) : null;
   const opts = { traj, second, ghost, t: state.t, show: state.show, fired: state.launched,
-                 markers: state.markers || {}, scenario, secondLabel: scenario.second?.label };
+                 markers: state.markers || {}, scenario, secondLabel: scenario.second?.label,
+                 resolve: R, hover: state.hover };
   if (state.dim === '3d') scene3d.render($('scene'), cam3, opts);
   else scene.render($('scene'), cam, opts);
 
@@ -363,7 +434,7 @@ function draw() {
     const P = palette();
     for (const spec of graphSpecs(traj, state.t, P)) drawGraph($(spec.canvas), spec);
   }
-  renderHud(); renderWorking();
+  renderHud(); renderWorking(); renderResolve(R);
   $('scrub').value = traj.tMax ? state.t / traj.tMax : 0;
   dirty = false;
 }
@@ -373,7 +444,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (state.step === 'flight' && state.playing && traj) {
-    state.t += dt;
+    state.t += dt * state.rate;
     if (state.t >= traj.tMax) {
       state.t = traj.tMax; state.playing = false; setPlayIcon(false);
       showDone();                       // only ever on a flight that ran its course
@@ -407,15 +478,16 @@ function applyTheme(mode) {
   document.documentElement.dataset.theme = mode;
   $('theme-btn').textContent = mode === 'dark' ? 'Light' : 'Dark';
   try { localStorage.setItem('suvat-theme', mode); } catch {}
+  dropToneCache();
   dirty = true;
 }
 
 $('brand').addEventListener('click', () => go('scenario'));
 $('back-1').addEventListener('click', () => go('scenario'));
-$('back-2').addEventListener('click', () => { hideDone(); go('values'); });
+$('back-2').addEventListener('click', () => { hideDone(); closeResolve(); go('values'); });
 $('launch').addEventListener('click', launch);
 $('play').addEventListener('click', togglePlay);
-const replay = () => { hideDone(); state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; };
+const replay = () => { hideDone(); closeResolve(); state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; };
 $('replay').addEventListener('click', replay);
 $('done-replay').addEventListener('click', replay);
 $('done-close').addEventListener('click', hideDone);
@@ -426,22 +498,42 @@ $('scrub').addEventListener('input', (e) => {
   state.playing = false; setPlayIcon(false);
   state.t = parseFloat(e.target.value) * traj.tMax; dirty = true;
 });
+$('res-close').addEventListener('click', closeResolve);
+$('res-go').addEventListener('click', () => {
+  closeResolve();
+  if (traj && state.t < traj.tMax - 1e-6) { state.playing = true; setPlayIcon(true); }
+  dirty = true;
+});
+for (const b of $('rate-seg').children) {
+  b.addEventListener('click', () => {
+    state.rate = parseFloat(b.dataset.rate);
+    for (const x of $('rate-seg').children) x.setAttribute('aria-pressed', String(x === b));
+  });
+}
 for (const b of $('dim-seg').children) {
   b.addEventListener('click', () => {
     state.dim = b.dataset.dim;
     for (const x of $('dim-seg').children) x.setAttribute('aria-pressed', String(x === b));
-    cam.auto = true; cam3.auto = true; dirty = true;
+    $('view-seg').hidden = state.dim !== '3d';
+    cam.fit = true; cam3.fit = true; dirty = true;
+  });
+}
+for (const b of $('view-seg').children) {
+  b.addEventListener('click', () => {
+    scene3d.setView(cam3, b.dataset.view, siteFor(state.id));
+    for (const x of $('view-seg').children) x.setAttribute('aria-pressed', String(x === b));
+    dirty = true;
   });
 }
 $('bounce-ck').addEventListener('change', (e) => {
   state.bounce = e.target.checked;
   $('bounce-opts').hidden = !state.bounce;
-  cam.auto = true; cam3.auto = true; recompute(); dirty = true;
+  cam.fit = true; cam3.fit = true; recompute(); dirty = true;
 });
 $('restitution').addEventListener('input', (e) => {
   state.restitution = parseFloat(e.target.value);
   $('rest-val').textContent = state.restitution.toFixed(2);
-  cam.auto = true; recompute(); dirty = true;
+  cam.fit = true; cam3.fit = true; recompute(); dirty = true;
 });
 $('theme-btn').addEventListener('click', () =>
   applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
@@ -456,23 +548,40 @@ document.addEventListener('keydown', (e) => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (state.step === 'values' && e.key === 'Enter' && !$('launch').disabled) { launch(); return; }
   if (state.step !== 'flight') return;
-  if (e.key === 'Escape') { hideDone(); return; }
+  if (e.key === 'Escape') { if (state.resolve) closeResolve(); else hideDone(); return; }
+  if (e.key === 'r' || e.key === 'R') {
+    if (state.resolve) closeResolve(); else if (state.launched) openResolve(state.t);
+    return;
+  }
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   else if (e.key === 'ArrowRight') { hideDone(); state.playing = false; setPlayIcon(false); state.t = Math.min(traj.tMax, state.t + traj.tMax / 60); dirty = true; }
   else if (e.key === 'ArrowLeft')  { hideDone(); state.playing = false; setPlayIcon(false); state.t = Math.max(0, state.t - traj.tMax / 60); dirty = true; }
 });
 
-addEventListener('resize', () => { dirty = true; });
+addEventListener('resize', () => {
+  if (!cam.touched) cam.fit = true;
+  if (!cam3.touched) cam3.fit = true;
+  dirty = true;
+});
+const pickScene = () => ({ markers: state.markers, scenario, traj, t: state.t,
+                           fired: state.launched, dim: state.dim });
+const resolveHooks = {
+  hover(on) { if (state.hover !== on) { state.hover = on; dirty = true; } },
+  click(t) { openResolve(t); },
+};
+
 scene.attachControls($('scene'), cam, () => { dirty = true; },
-  () => ({ markers: state.markers, scenario }),
+  pickScene,
   (kind, world) => {
     if (state.dim !== '2d') return;
     if (kind === 'obstacle') { state.markers.obstacle.x = Math.max(0.5, world.x); state.markers.obstacle.height = Math.max(0, world.y); }
     else if (kind === 'target') { state.markers.target.x = Math.max(0.5, world.x); state.markers.target.y = Math.max(0, world.y); }
-    else if (kind === 'heightLine') { state.markers.heightLine = Math.max(0, world.y); }
+    else if (kind === 'heightLine') { state.markers.heightLine = scene.snapHeight(Math.max(0, world.y)); }
     dirty = true;
-  });
-scene3d.attachControls3D($('scene'), cam3, () => { if (state.dim === '3d') dirty = true; });
+  },
+  resolveHooks);
+scene3d.attachControls3D($('scene'), cam3, () => { if (state.dim === '3d') dirty = true; },
+                         pickScene, resolveHooks);
 
 /* ── boot ───────────────────────────────────────────────────────────── */
 let saved = null;
@@ -485,5 +594,5 @@ requestAnimationFrame(frame);
 
 window.SUVAT = { state, get traj() { return traj; }, get solved() { return solved; },
                  cam, cam3, choose: chooseScenario, launch, go,
-                 showDone, hideDone,
+                 showDone, hideDone, openResolve, closeResolve,
                  redraw() { recompute(); draw(); } };

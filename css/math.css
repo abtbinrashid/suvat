@@ -1,0 +1,89 @@
+/* math.css — how a typeset equation looks. Pairs with js/notation.js, which is
+   the only thing that emits these classes. Nothing here is decorative: every
+   rule exists because the alternative is a programmer's notation.
+
+   The maths is SERIF where the interface is sans. That is deliberate — an
+   equation is a quotation from a different language, and a textbook sets it in
+   a different face for exactly that reason. It also gets us a true italic for
+   variables, which Instrument Sans does not reliably ship. */
+
+:root {
+  --font-math: 'STIX Two Text', 'Cambria Math', 'Latin Modern Roman',
+               'Times New Roman', Cambria, Georgia, serif;
+}
+
+.m {
+  font-family: var(--font-math);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: normal;
+  /* A maths serif has a smaller x-height than Instrument Sans, so an equation
+     set at the same nominal size reads smaller than the prose beside it. */
+  font-size: 1.05em;
+}
+
+/* ISO 80000-2: quantities italic, units and function names upright. The rule
+   is not a style preference — italic s·i·n reads as three variables. */
+.m-var  { font-style: italic; }
+.m-num  { font-style: normal; font-variant-numeric: tabular-nums; }
+.m-fn   { font-style: normal; }
+.m-unit { font-style: normal; }
+.m-txt  { font-style: normal; font-family: var(--font); font-size: 0.94em; }
+
+/* Implicit multiplication. Thin, not a word space: 2a is one product. */
+.m-sp { display: inline-block; width: 0.17em; }
+
+/* Operator spacing, loosest around a relation — the eye needs to find the =. */
+.m-op    { margin: 0 0.2em; }
+.m-op.m-rel { margin: 0 0.34em; }
+.m-op.m-mul { margin: 0 0.16em; }
+.m-op.m-un  { margin: 0 0.02em 0 0; }      /* a sign, not an operation */
+.m-op.m-comma { margin: 0 0.26em 0 0; }
+.m-par   { margin: 0; }
+.m-deg   { margin-left: 0.04em; }          /* 35°, never 35 ° */
+
+/* An index cannot obey the 13px floor — an exponent the same size as its base
+   is not an exponent. It gets its own floor instead, and the glyphs are digits,
+   which carry the least ambiguity of anything on the page. */
+.m-sup, .m-sub { font-size: max(11px, 0.74em); line-height: 0; font-style: normal; }
+.m-sup { vertical-align: 0.52em; }
+.m-sub { vertical-align: -0.28em; }
+.m-sup .m-op, .m-sub .m-op { margin: 0 0.06em; }
+
+/* A fraction is stacked, with a bar. This is the single biggest difference
+   between maths and code: (v^2 - u^2)/(2a) is one line of punctuation, and the
+   same thing set properly is two short rows the eye reads at a glance. */
+.m-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: -0.46em;
+  margin: 0 0.18em;
+  white-space: nowrap;
+  text-align: center;
+}
+.m-fnum { padding: 0 0.3em 0.08em; border-bottom: 1px solid currentColor; }
+.m-fden { padding: 0.1em 0.3em 0; }
+
+/* A radical with a vinculum — the bar is what says where the root ends, so
+   √(u² + 2gh) needs no brackets once it is drawn properly. */
+.m-sqrt { white-space: nowrap; }
+.m-radix { padding-right: 0.02em; }
+.m-rad {
+  border-top: 1px solid currentColor;
+  padding: 0.1em 0.14em 0 0.06em;
+  margin-left: -0.04em;
+}
+
+/* The five letters, wherever they head a box or a card, are quantities too. */
+.s-sym, .d-sym, .r-sym {
+  font-family: var(--font-math);
+  font-style: italic;
+}
+
+/* |v| — the size of a quantity, sign discarded. */
+.m-bar { padding: 0 0.06em; }
+
+/* A line that opens with the relation it continues needs no gap before it. */
+.m-op.m-lead { margin-left: 0; }

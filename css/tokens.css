@@ -80,7 +80,7 @@
   --accent-soft: rgba(194,65,12,0.10);
   --on-accent: #ffffff;
 
-  --vel:    #c2410c;
+  --vel:    #8f2f0c;   /* darkened: 5.9:1 on the daylight sky, was 3.2:1 */
   --disp:   #0891b2;
   --acc:    #6d28d9;
   --second: #be185d;
@@ -92,4 +92,59 @@
   --grid-major: rgba(26,23,20,0.22);
   --axis:       rgba(26,23,20,0.45);
   --shadow: 0 1px 2px rgba(26,23,20,0.045);
+}
+
+/* ── the place the motion happens in ──────────────────────────────────
+   A football stadium and the district round it, at 1 unit = 1 metre.
+
+   THREE VALUE BANDS, and they are the whole reason a three-tier stand is
+   legible at a glance. A section cuts material; the convention is that cut
+   material is the darkest thing on the page, the space behind the cut is the
+   lightest, and the surfaces you are looking AT sit between them:
+
+     --structure-dark   cut material (poché)        darkest
+     --seat             raked seating               mid, slightly cool
+     --interior         the volume behind the cut   lightest
+
+   Those three are held at least 2:1 apart. Everything else is scenery, and
+   scenery has one job: to be legible without competing. So the whole set is
+   low chroma and well away from the five physics hues — in particular the
+   brickwork is pulled out of the velocity hue, because a district full of
+   warm orange roofs is a district arguing with the velocity vector.
+
+   Light theme is a daytime match. Dark theme is a FLOODLIT NIGHT match, which
+   is why the grass gets brighter in the dark while everything round it gets
+   darker, and why the lighting tokens only do anything in the dark. */
+:root {
+  --sky-top: #070a11; --sky-bottom: #141a25; --haze: #141a25;
+  --earth: #23232b; --interior: #353544; --terrain: #202426;
+  --grass: #3c6b45; --grass-alt: #345e3c; --runoff: #27422c;
+  --pitchline: rgba(255,255,255,0.80);
+  --concrete: #2e3139; --paving: #282c33; --asphalt: #1b1e24;
+  --roadline: rgba(255,255,255,0.45); --ballast: #232630;
+  --brick: #312e2f; --roofing: #1b191b; --window: #f0d48a;
+  --glass: rgba(132,163,188,0.26); --metal: #5a616b; --net: rgba(255,255,255,0.30);
+  --seat: #525a67; --seat-alt: #434a56; --board: #4f5560;
+  --structure: #3b4350; --structure-dark: #0e1016;
+  --roof-top: #3e444e; --roof-under: #1c1f26;
+  --prop: #8a8f98; --water: #16222b; --park: #243a27;
+  --flood: #ffeec2; --far-grid: rgba(255,255,255,0.14);
+  --night: 1;                       /* lighting effects on */
+}
+
+:root[data-theme='light'] {
+  --sky-top: #a0c2e0; --sky-bottom: #d2e3f0; --haze: #dbe4ea;
+  --earth: #9e9d9b; --interior: #d2cec7; --terrain: #b4b7a9;
+  --grass: #8fab78; --grass-alt: #85a16d; --runoff: #6b8757;
+  --pitchline: rgba(255,255,255,0.95);
+  --concrete: #bfbab1; --paving: #d2cec7; --asphalt: #9b9995;
+  --roadline: rgba(255,255,255,0.90); --ballast: #a9a49d;
+  --brick: #a89e97; --roofing: #6b6764; --window: #e9dcb6;
+  --glass: rgba(188,205,216,0.50); --metal: #9ca0a4; --net: rgba(255,255,255,0.75);
+  --seat: #848a92; --seat-alt: #737983; --board: #9d9890;
+  --structure: #b0aba2; --structure-dark: #4d4945;
+  --roof-top: #aeb3b8; --roof-under: #73787e;
+  --prop: #5f5c58; --water: #9ab3c0; --park: #9fba86;
+  --flood: #fff6df; --far-grid: rgba(26,23,20,0.16);
+  --night: 0;
 }
