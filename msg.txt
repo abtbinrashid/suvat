@@ -1,0 +1,31 @@
+Nine scenarios in three groups, each saying what it is for
+
+Every scenario already carried a written description and none of them was
+ever rendered — the cards showed a sketch and a name, so there was no way to
+tell what any of them was good for. They now carry a tag and a paragraph,
+and each group says what its members have in common.
+
+Grouped by where the object starts:
+  From the ground   thrown straight up, simple arc
+  From a platform   dropped, thrown straight down, off a platform,
+                    up and off a platform (was "up and off a cliff")
+  Interesting ones  throw at a target, time above a line, two that collide
+
+Removed: over a fence, two angles / same landing, downwards off a height,
+hit from just above the ground.
+
+TWO THAT COLLIDE was broken. The second ball was hard-coded at 35 m/s and
+36.87°, which only ever met the first while the first object's numbers were
+pre-filled too; once the student types their own, it simply missed, and
+nothing said so. It is now aimed from whatever is typed — same horizontal
+speed, so the two stay on one vertical line, and a vertical speed that closes
+the height by the chosen moment:
+
+    h - ½gt²  =  u_y t - ½gt²     ->     u_y = h / t
+
+The ½gt² cancels, which is exactly why it cannot miss. Closest approach
+measured at 0.00000 m for u=28/h=73.5, u=12/h=40, u=45/h=120, and under Moon
+gravity. It draws no second ball at all, rather than a wrong one, when the
+height is near zero or gravity is off.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

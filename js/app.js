@@ -62,8 +62,13 @@ function buildScenarioScreen() {
       <button class="pcard" data-id="${s.id}">
         ${thumb(s)}
         <b>${s.name}</b>
+        ${s.sub ? `<span class="pc-sub">${s.sub}</span>` : ''}
+        <p class="pc-note">${s.note}</p>
       </button>`).join('');
-    return `<div class="pgroup"><div class="pglabel">${g.label}</div><div class="pgrid-row">${cards}</div></div>`;
+    return `<div class="pgroup">
+      <div class="pglabel">${g.label}</div>
+      ${g.blurb ? `<p class="pgblurb">${g.blurb}</p>` : ''}
+      <div class="pgrid-row">${cards}</div></div>`;
   }).join('');
   for (const b of $('pgrid').querySelectorAll('.pcard')) {
     b.addEventListener('click', () => chooseScenario(b.dataset.id));
@@ -208,11 +213,17 @@ function recompute() {
   dirty = true;
 }
 
+/**
+ * The second object is DERIVED from the first, never fixed. Hard-coding its
+ * numbers only worked while the first object's numbers were pre-filled too —
+ * the moment the student types their own, a fixed second object simply misses.
+ */
 function buildSecond(p) {
   const s = scenario.second;
   if (!s) return null;
-  if (s.thetaFrom) return flight({ u: p.u, theta: s.thetaFrom(p.theta), h: p.h, g: p.g });
-  return flight({ u: s.u, theta: s.theta, h: s.h, g: p.g });
+  const q = s.from ? s.from(p) : s;
+  if (!q) return null;                   // the situation does not support one
+  return flight({ u: q.u, theta: q.theta, h: q.h ?? 0, g: p.g });
 }
 
 /* ── step 3 · flight ────────────────────────────────────────────────── */

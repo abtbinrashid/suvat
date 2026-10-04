@@ -58,17 +58,21 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1
 .eyebrow { font-size: var(--fs-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 0 0 var(--sp-2); font-weight: 600; }
 
 /* ── 1 · scenario cards ─────────────────────────────────────────────── */
-.pgroup { margin-bottom: var(--sp-8); }
-.pglabel { font-size: var(--fs-xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: var(--sp-3); font-weight: 600; }
-.pgrid-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--sp-3); }
+.pgroup { margin-bottom: var(--sp-10); }
+.pglabel { font-size: var(--fs-xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin-bottom: var(--sp-2); font-weight: 700; }
+.pgblurb { font-size: var(--fs-sm); color: var(--ink-muted); margin: 0 0 var(--sp-4); max-width: 62ch; line-height: 1.5; }
+.pgrid-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: var(--sp-3); }
 .pcard {
   text-align: left; background: var(--card); border: 1px solid var(--border-soft);
   border-radius: var(--r-xl); padding: var(--sp-4); box-shadow: var(--shadow);
   transition: border-color 120ms, transform 120ms;
+  display: flex; flex-direction: column;
 }
 .pcard:hover { border-color: var(--accent); transform: translateY(-1px); }
 .pcard svg { display: block; width: 100%; height: auto; margin-bottom: var(--sp-3); }
 .pcard b { display: block; font-size: var(--fs-base); font-weight: 600; }
+.pc-sub { display: block; font-size: var(--fs-xs); color: var(--accent); margin-top: 2px; }
+.pc-note { font-size: var(--fs-xs); color: var(--ink-muted); line-height: 1.5; margin: var(--sp-2) 0 0; }
 
 /* ── 2 · the five boxes ─────────────────────────────────────────────── */
 .suvat { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-5); }
