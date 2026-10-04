@@ -91,12 +91,12 @@ function chooseScenario(id) {
   scenario = byId(id);
   state.id = id;
   state.given = {};
-  // Seed only the quantities the situation itself fixes; the rest is theirs.
-  state.given.g = scenario.params.g;
+  // The scenario picks the SITUATION, never the numbers. Every box starts
+  // empty; the only thing it fixes is that a dropped object starts at rest,
+  // which is what "dropped" means.
   if (scenario.noAngle) state.given.u = 0;
-  if (scenario.lockAngle) state.theta = scenario.params.theta;
-  state.theta = scenario.params.theta;
-  state.h = scenario.params.h;
+  state.theta = undefined;
+  state.h = undefined;
   state.markers = JSON.parse(JSON.stringify(scenario.markers || {}));
   state.firedBefore = false; ghost = null;
   $('chosen').textContent = scenario.name;
@@ -114,7 +114,6 @@ function buildValuesScreen() {
       <input type="number" step="any" data-k="${f.k}" placeholder="—"
              value="${state.given[f.k] ?? ''}" aria-label="${f.name} in ${f.unit}"${locked ? ' readonly' : ''}>
       <div class="s-unit">${f.unit}</div>
-      <div class="s-tag" data-tag="${f.k}"></div>
     </div>`;
   }).join('');
 
@@ -139,7 +138,7 @@ function buildValuesScreen() {
     <input id="x-h" type="number" step="any" value="${state.h ?? ''}" placeholder="—">
     <p class="xhint">Optional. Blank means it works the height out, or takes the ground.</p></div>`);
   rows.push(`<div class="xrow"><label>Gravitational field</label><div class="chips" id="g-chips">${
-    GRAVITY.map((x) => `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label}</button>`).join('')
+    GRAVITY.map((x) => `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label} ${x.g}</button>`).join('')
   }</div></div>`);
   $('extra').innerHTML = rows.join('');
 
@@ -161,48 +160,12 @@ function buildValuesScreen() {
 }
 
 /* ── solve ──────────────────────────────────────────────────────────── */
-function clearDerived() {
-  for (const box of $('suvat').querySelectorAll('.sbox')) {
-    box.dataset.derived = 'false';
-    const tag = box.querySelector('.s-tag'); if (tag) tag.textContent = '';
-    const input = box.querySelector('input');
-    // put back only what the student typed; derived figures are transient
-    if (input && document.activeElement !== input) input.value = state.given[box.dataset.k] ?? '';
-  }
-  for (const row of $('extra').querySelectorAll('.xrow')) row.dataset.derived = 'false';
-}
-
-/** Write the engine's answers into the boxes it filled, and mark them as its own. */
+/**
+ * The boxes hold what the student typed and nothing else. The engine's answers
+ * belong at the end of the flight, not spilled back over the form while it is
+ * still being filled in.
+ */
 function showDerived(r) {
-  const put = (key, value) => {
-    // Never type over the student. A box they filled in is theirs.
-    if (state.given[key] !== undefined) return;
-    const box = $('suvat').querySelector(`.sbox[data-k="${key}"]`);
-    if (!box) return;
-    const input = box.querySelector('input');
-    box.dataset.derived = 'true';
-    box.querySelector('.s-tag').textContent = 'worked out';
-    if (document.activeElement !== input) input.value = Number(value.toFixed(2));
-  };
-  // Answer the question that was asked. If they pinned a moment mid-flight —
-  // "how fast is it going 9 m up?" — these boxes hold THAT answer; the landing
-  // card at the end holds the whole flight.
-  const set = r.answer ?? r.five;
-  const slots = { s: 's', u: 'u', v: 'v', a: 'g', t: 't' };
-  for (const [slot, key] of Object.entries(slots)) {
-    if (!set[slot].given) put(key, set[slot].value);
-  }
-  // the angle and the launch height, when the engine supplied them
-  const xrow = (name, value, dp) => {
-    const row = $('extra').querySelector(`.xrow[data-x="${name}"]`);
-    if (!row) return;
-    row.dataset.derived = 'true';
-    const input = row.querySelector('input');
-    if (input && document.activeElement !== input) input.value = Number(value.toFixed(dp));
-  };
-  if (r.filled.theta) xrow('theta', r.params.theta, 1);
-  if (r.filled.h || r.assumedH) xrow('h', r.params.h, 2);
-
   const notes = [];
   if (r.convention) notes.push(r.convention);
   notes.push(...r.notes);
@@ -218,7 +181,6 @@ function recompute() {
   solved = solveLaunch(k, { noAngle: scenario.noAngle, lockAngle: scenario.lockAngle });
 
   const msg = $('solve-msg'), btn = $('launch');
-  clearDerived();
 
   if (!solved.ok) {
     msg.dataset.ok = 'false'; msg.textContent = solved.reason;
@@ -230,7 +192,7 @@ function recompute() {
 
   msg.dataset.ok = 'true';
   msg.textContent = solved.derived.length
-    ? `Worked out for you:  ${solved.derived.join('  ·  ')}`
+    ? `Ready. The rest comes out as:  ${solved.derived.join('  ·  ')}`
     : 'Everything needed is here.';
   showDerived(solved);
 
