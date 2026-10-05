@@ -10,6 +10,7 @@ import { flight } from './core/projectile.js';
 import { SCENARIOS, GROUPS, GRAVITY, byId } from './scenarios.js';
 import { buildWorking, obstacleCheck, resolveAt } from './working.js';
 import * as scene from './render/scene.js';
+import * as exhibit from './render/exhibit.js';
 import * as scene3d from './render/scene3d.js';
 import { createCamera3D } from './render/grid.js';
 import { siteFor } from './world/world.js';
@@ -169,8 +170,51 @@ function chooseScenario(id) {
   state.firedBefore = false; ghost = null;
   $('chosen').textContent = scenario.name;
   buildValuesScreen();
-  go('values');
+  // An exhibit opens on the experiment itself. The card over the blurred
+  // stage is where the numbers get chosen, and the values screen is still a
+  // click away for anyone who would rather type them.
+  if (scenario.intro) {
+    seedExhibit();
+    recompute();
+    if (traj) { state.launched = true; state.firedBefore = false; state.t = 0; state.playing = false; }
+    go('flight');
+    openIntro();
+  } else go('values');
 }
+
+/** Fill in the scenario's own starting numbers, so the stage has something to show. */
+function seedExhibit() {
+  const s = scenario.seed || {};
+  if (s.u != null) state.given.u = s.u;
+  if (s.g != null) state.given.g = s.g;
+  if (s.h != null) state.h = s.h;
+  buildValuesScreen();
+}
+
+/* ── the intro card ─────────────────────────────────────────────────── */
+function openIntro() {
+  const i = scenario.intro;
+  if (!i) return;
+  $('intro-eyebrow').textContent = scenario.place || 'Experiment';
+  $('intro-title').textContent = i.title;
+  $('intro-body').textContent = i.body;
+  $('intro-models').innerHTML = i.models.map((mdl) => `
+    <button class="imodel" data-u="${mdl.u}" aria-pressed="${state.given.u === mdl.u}">
+      <span><b>${mdl.name}</b><br><span class="im-note">${mdl.note}</span></span>
+      <span class="im-u">${mdl.u}<small>${i.unit}</small></span>
+    </button>`).join('');
+  for (const b of $('intro-models').children) {
+    b.addEventListener('click', () => {
+      state.given.u = parseFloat(b.dataset.u);
+      for (const x of $('intro-models').children) x.setAttribute('aria-pressed', String(x === b));
+      buildValuesScreen();
+      recompute();
+      dirty = true;
+    });
+  }
+  $('intro').hidden = false;
+}
+function closeIntro() { $('intro').hidden = true; }
 
 /* ── step 2 · the five values ───────────────────────────────────────── */
 function buildValuesScreen() {
@@ -347,6 +391,7 @@ function shift(f, x0) {
 /* ── step 3 · flight ────────────────────────────────────────────────── */
 function launch() {
   if (!traj) return;
+  closeIntro();
   closeResolve();
   if (state.firedBefore) ghost = traj.path(260);
   state.firedBefore = true; state.launched = true;
@@ -539,7 +584,10 @@ function draw() {
   const opts = { traj, second, ghost, t: state.t, show: state.show, fired: state.launched,
                  markers: state.markers || {}, scenario, secondLabel: scenario.second?.label,
                  resolve: R, hover: state.hover };
-  if (state.dim === '3d') scene3d.render($('scene'), cam3, opts);
+  // An exhibit is staged rather than surveyed: its own plate, its own scale on
+  // each axis, and no 3D — there is nothing to orbit in a strobe photograph.
+  if (scenario?.exhibit) exhibit.render($('scene'), cam, opts);
+  else if (state.dim === '3d') scene3d.render($('scene'), cam3, opts);
   else scene.render($('scene'), cam, opts);
 
   if (state.extras.graphs) {
@@ -604,6 +652,8 @@ $('brand').addEventListener('click', () => go('scenario'));
 $('back-1').addEventListener('click', () => go('scenario'));
 $('back-2').addEventListener('click', () => { hideDone(); closeResolve(); go('values'); });
 $('launch').addEventListener('click', launch);
+$('intro-go').addEventListener('click', () => { closeIntro(); launch(); });
+$('intro-values').addEventListener('click', () => { closeIntro(); go('values'); });
 $('play').addEventListener('click', togglePlay);
 const replay = () => { hideDone(); closeResolve(); state.t = 0; state.playing = true; setPlayIcon(true); dirty = true; };
 $('replay').addEventListener('click', replay);

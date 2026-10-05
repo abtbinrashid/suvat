@@ -92,6 +92,20 @@
 
         <div class="canvas-wrap" id="canvas-wrap" data-resolve="off">
           <canvas id="scene" aria-label="Projectile motion"></canvas>
+          <!-- shown over a blurred stage before an exhibit runs -->
+          <div class="intro" id="intro" hidden>
+            <div class="intro-card" role="dialog" aria-labelledby="intro-title">
+              <p class="intro-eyebrow" id="intro-eyebrow">Experiment</p>
+              <h2 class="intro-h" id="intro-title"></h2>
+              <p class="intro-body" id="intro-body"></p>
+              <div class="intro-models" id="intro-models"></div>
+              <div class="intro-acts">
+                <button class="ghost" id="intro-values">Type my own numbers</button>
+                <button class="fire sm" id="intro-go">Run it</button>
+              </div>
+            </div>
+          </div>
+
           <div class="hud hud-l" id="hud-left"></div>
           <div class="hud hud-r" id="hud-right"></div>
 

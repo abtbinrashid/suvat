@@ -367,3 +367,41 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; background: v
     top: auto; bottom: var(--sp-2); max-height: 62vh; z-index: 11;
   }
 }
+
+
+/* ── the exhibit intro: a card over a blurred stage ───────────────────── */
+.intro {
+  position: absolute; inset: 0; z-index: 6; display: grid; place-items: center;
+  padding: var(--sp-4); overflow-y: auto;
+  background: color-mix(in srgb, #0e0e0c 52%, transparent);
+  backdrop-filter: blur(9px) saturate(.85);
+  animation: intro-in 200ms ease-out both;
+}
+@keyframes intro-in { from { opacity: 0; } to { opacity: 1; } }
+.intro-card {
+  width: min(560px, 100%); background: var(--card);
+  border: 1px solid var(--border-soft); border-radius: var(--r-xl);
+  box-shadow: 0 24px 60px rgba(0,0,0,.34); padding: var(--sp-6);
+  animation: intro-rise 280ms cubic-bezier(.2,.8,.25,1) both;
+}
+@keyframes intro-rise { from { transform: translateY(12px) scale(.985); } to { transform: none; } }
+.intro-eyebrow { font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase;
+                 color: var(--accent); font-weight: 700; margin: 0 0 var(--sp-1); }
+.intro-h { font-size: var(--fs-2xl); margin: 0 0 var(--sp-3); }
+.intro-body { font-size: var(--fs-sm); color: var(--ink-muted); line-height: 1.6; margin: 0 0 var(--sp-5); }
+.intro-models { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+.imodel {
+  display: flex; align-items: baseline; gap: var(--sp-3); width: 100%; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--sp-3) var(--sp-4); transition: border-color 120ms, background 120ms;
+}
+.imodel:hover { background: var(--hover); }
+.imodel[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.imodel b { font-size: var(--fs-base); font-weight: 650; }
+.imodel .im-note { font-size: var(--fs-xs); color: var(--ink-muted); }
+.imodel .im-u { margin-left: auto; font-size: var(--fs-lg); font-weight: 700; white-space: nowrap; }
+.imodel[aria-pressed='true'] .im-u { color: var(--accent); }
+.imodel .im-u small { font-size: var(--fs-xs); font-weight: 400; color: var(--ink-muted); margin-left: 3px; }
+.intro-acts { display: flex; gap: var(--sp-3); }
+.intro-acts .ghost { flex: none; }
+@media (max-width: 860px) { .intro-card { padding: var(--sp-4); } }

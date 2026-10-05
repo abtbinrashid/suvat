@@ -93,15 +93,27 @@ export const SCENARIOS = [
     } },
 
   /* ── the two that are not at the stadium ──────────────────────────── */
-  { id: 'bullet', group: 'look', name: 'Fired and dropped',
-    sub: 'both land together',
-    note: 'One bullet fired flat, one released from the same height at the same instant. They hit the floor TOGETHER, however fast the shot — because the horizontal push does nothing to the vertical fall. Change the muzzle speed and watch the landing time refuse to move.',
-    params: { u: 34, theta: 0, h: 10, g: 9.81 }, lockAngle: true,
-    backdrop: 'warehouse', site: FLAT_SITE, secondSprite: true,
-    place: 'A test range in a distribution shed',
+  { id: 'bullet', group: 'look', name: 'Drop one, fire one',
+    sub: 'which lands first?',
+    note: 'Two identical rounds leave the bench at the same instant: one fired flat, one simply released. Vertically they are the same problem — u_y = 0, a = −g — because firing adds velocity along x only, and the two components are independent. The horizontal push buys no hang time at all, at any muzzle speed.',
+    params: { u: 360, theta: 0, h: 1.5, g: 9.81 }, lockAngle: true,
+    exhibit: true, backdrop: 'warehouse', site: FLAT_SITE, secondSprite: true,
+    place: 'An indoor range, lit by a strobe',
+    pairLabel: 'same height',
+    seed: { u: 360, h: 1.5, g: 9.81 },
+    intro: {
+      title: 'Pick a round',
+      body: 'Muzzle speed sets how far the fired round goes before it lands. It does not change WHEN it lands — that is the whole experiment, so try to break it.',
+      field: 'u', unit: 'm s⁻¹',
+      models: [
+        { name: 'Air rifle', u: 170, note: '.177 pellet' },
+        { name: 'Pistol', u: 360, note: '9 mm, typical service load' },
+        { name: 'Service rifle', u: 920, note: '5.56 mm' },
+      ],
+    },
     second: {
-      label: 'released, not fired',
-      /** The same bullet, let go rather than fired. Nothing else changes. */
+      label: 'released',
+      /** The same round, let go rather than fired. Nothing else changes. */
       from(p) {
         if (!(p.h > 0.05)) return null;        // needs a height to fall from
         return { u: 0, theta: -90, h: p.h };
@@ -110,13 +122,26 @@ export const SCENARIOS = [
 
   { id: 'monkey', group: 'look', name: 'Monkey and hunter',
     sub: 'aim straight at it',
-    note: 'The hunter aims the banana directly AT the monkey. The monkey lets go the instant it is fired. Both fall by exactly ½gt² from where they would have been, so the banana cannot miss — drag the monkey anywhere and it still hits. The only way to fail is to throw too slowly and let the monkey reach the sand first.',
-    params: { u: 22, theta: 0, h: 1.4, g: 9.81 },
-    backdrop: 'beach', site: FLAT_SITE, secondSprite: true,
-    place: 'A beach, and a monkey in a palm',
-    markers: { target: { x: 26, y: 11.5 } }, dragTarget: true, aimAtTarget: true,
+    note: 'The hunter aims directly AT the monkey; the monkey drops the instant the shot leaves. In the time the banana takes to cover the horizontal gap, both have fallen the same ½gt² below where they would have been without gravity — so the aim that would have been right without gravity is still right with it. Drag the monkey anywhere: it only fails if the monkey reaches the sand first.',
+    params: { u: 22, theta: 0, h: 1.5, g: 9.81 },
+    exhibit: true, backdrop: 'beach', site: FLAT_SITE, secondSprite: true,
+    place: 'A beach at dusk',
+    pairLabel: 'same fall',
+    caughtLabel: 'caught — every time',
+    seed: { u: 22, h: 1.5, g: 9.81 },
+    markers: { target: { x: 12, y: 9 } }, dragTarget: true, aimAtTarget: true,
+    intro: {
+      title: 'How hard do you throw?',
+      body: 'Speed decides whether the banana arrives before the monkey lands. It does not decide whether the aim is right — aimed straight at the monkey, every one of these connects.',
+      field: 'u', unit: 'm s⁻¹',
+      models: [
+        { name: 'Lob', u: 13, note: 'only just gets there' },
+        { name: 'Throw', u: 22, note: 'comfortable' },
+        { name: 'Hurl', u: 38, note: 'barely time to fall' },
+      ],
+    },
     second: {
-      label: 'the monkey, falling',
+      label: 'the monkey',
       /** It drops from where it hung — no throw, no angle, just gravity. */
       from(p, markers) {
         const t = markers?.target;
