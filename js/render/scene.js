@@ -18,6 +18,7 @@ import { createCamera3D } from './grid.js';
 import { slice, siteFor, siteMap, deckProfile } from '../world/world.js';
 import { D } from '../world/dims.js';
 import * as W2 from './world2d.js';
+import { drawBackdrop, drawProps, EXTENT } from './backdrops.js';
 
 export { createCamera3D };
 
@@ -80,8 +81,10 @@ const snapWant = (cam) => { cam.want = { scale: cam.scale, cx: cam.cx, cy: cam.c
    The brief is explicit: fit before launch and do not rescale during it. A
    camera that keeps rescaling turns a fast launch and a slow one into the
    same picture, which destroys the one thing the view exists to show. */
-function autoFit(cam, flights, markers, w, h, u0, section) {
+function autoFit(cam, flights, markers, w, h, u0, section, backdrop) {
   let uLo = u0, uHi = u0, yHi = 4;
+  const ex = backdrop ? EXTENT[backdrop] : null;
+  if (ex) { uLo = Math.min(uLo, ex.x0); uHi = Math.max(uHi, ex.x1); yHi = Math.max(yHi, ex.yTop); }
   for (const f of flights) {
     if (!f) continue;
     const end = f.pos(f.tMax);
@@ -148,11 +151,11 @@ export function render(canvas, cam, o) {
   const P = palette();
   const L = labels();
   const tn = W2.tones();
-  const site = siteFor(scenario?.id);
+  const site = scenario?.site ?? siteFor(scenario?.id);
   const { u0 } = siteMap(site);
   const list = [f, second].filter(Boolean);
   const section = slice({ axis: site.axis, at: site.at, dir: site.dir });
-  if (cam.fit) autoFit(cam, list, markers, w, h, u0, section);
+  if (cam.fit) autoFit(cam, list, markers, w, h, u0, scenario?.backdrop ? null : section, scenario?.backdrop);
   else applyBand(cam, w, h, u0, f.pos(fired ? t : 0));
 
   /* section coordinates on the left, flight coordinates on the right */
@@ -174,16 +177,26 @@ export function render(canvas, cam, o) {
   const key = [w, h, document.documentElement.dataset.theme, cam.scale.toFixed(4),
                cam.cx.toFixed(2), cam.cy.toFixed(2), scenario?.id, cam.moving ? 'lo' : 'hi'].join('|');
   const bg = W2.layer('section', w, h, key, (g) => {
-    W2.drawSection({ ctx: g, w, h, span, scale: cam.scale, sx: su, sy, px: pu, py,
-                     section, tn, L: null, moving: cam.moving });
+    // A scenario that names a backdrop is somewhere else entirely — a shed, a
+    // beach — and the stadium section does not apply to it.
+    if (scenario?.backdrop) {
+      drawBackdrop(scenario.backdrop, { ctx: g, w, h, span, scale: cam.scale,
+                                        sx: su, sy, moving: cam.moving });
+    } else {
+      W2.drawSection({ ctx: g, w, h, span, scale: cam.scale, sx: su, sy, px: pu, py,
+                       section, tn, L: null, moving: cam.moving });
+    }
   });
   ctx.drawImage(bg, 0, 0, w, h);
 
   /* ── readability chrome ───────────────────────────────────────────── */
   if (show.grid) metreGrid({ ctx, w, h, su, sy, pu, py, cam, P, L, u0 });
   if (show.ruler !== false) W2.heightRuler({ ctx, w, h, sy, py, scale: cam.scale, tn }, L,
-    Math.max(f.apexHeight, f.params.h, D.roof.fasciaTop, markers.heightLine ?? 0));
-  landmarkLabels({ ctx, w, h, sy, su, L, tn, span, P, section, uMin: pu(0), uMax: pu(w) });
+    Math.max(f.apexHeight, f.params.h,
+             scenario?.backdrop ? 0 : D.roof.fasciaTop, markers.heightLine ?? 0));
+  if (!scenario?.backdrop) {
+    landmarkLabels({ ctx, w, h, sy, su, L, tn, span, P, section, uMin: pu(0), uMax: pu(w) });
+  }
 
   /* ── height line, fence, target ───────────────────────────────────── */
   if (markers.heightLine != null) {
@@ -220,11 +233,14 @@ export function render(canvas, cam, o) {
 
   if (markers.target) {
     const p = M(markers.target);
-    const hit = fired ? passesThrough(f, markers.target) : null;
+    // A target that LETS GO is not a fixed point, so asking whether the path
+    // passed through where it used to hang answers the wrong question. The
+    // catch is reported by the scenario instead.
+    const hit = fired && !scenario?.aimAtTarget ? passesThrough(f, markers.target) : null;
     const col = hit == null ? P.mark : hit ? P.good : P.mark;
     dot(ctx, p.x, p.y, 13, { stroke: col, width: 3 });
     dot(ctx, p.x, p.y, 4, { fill: col });
-    L.add(hit == null ? 'target — drag me' : hit ? 'hit' : 'missed',
+    L.add(hit == null ? (scenario?.aimAtTarget ? (fired ? '' : 'drag the monkey') : 'target — drag me') : hit ? 'hit' : 'missed',
           p.x, p.y - 28, { color: hit ? P.good : col, align: 'center', pri: 9, size: 18, weight: 600 });
   }
 
@@ -233,12 +249,24 @@ export function render(canvas, cam, o) {
     const delay = o.secondDelay || 0;
     stroke(ctx, second.path(200).map(M), { color: P.second, width: 3.4, dash: [9, 6], alpha: .9 });
     const t2 = clamp(t - delay, 0, second.tMax);
-    if (t >= delay) {
+    // A monkey is not a ball. Where the scenario brings its own sprite, the
+    // dashed path and the label stay and the marble goes.
+    if (t >= delay && !scenario?.secondSprite) {
       const q = M(second.pos(t2));
       ballSprite(ctx, q.x, q.y, (D.prop.ball / 2) * cam.scale, { ring: P.second });
     }
     L.add(o.secondLabel || 'second object', sx(second.range), groundY - 22,
           { color: P.second, align: 'center', pri: 3, size: 17 });
+  }
+
+  /* ── the props that belong to this place ──────────────────────────── */
+  if (scenario?.backdrop) {
+    drawProps(scenario.backdrop, { ctx, w, h, span, scale: cam.scale, sx, sy }, {
+      t, fired, theta: f.params.theta, launchY: f.params.h,
+      monkey: markers.target || null,
+      monkeyNow: second ? second.pos(Math.min(t, second.tMax)) : null,
+      secondNow: second ? second.pos(Math.min(t, second.tMax)) : null,
+    });
   }
 
   /* ── the path ─────────────────────────────────────────────────────── */
@@ -397,7 +425,7 @@ export function render(canvas, cam, o) {
   const barX = w - 210;
   const bar = W2.scaleBar({ ctx, scale: cam.scale, tn }, barX, h - 28);
   L.add(bar.label, barX + bar.px + 9, h - 28, { color: P.strong, pri: 11, size: 14, bg: false });
-  L.add(`${W2.BAND_LABEL[band]} · 1 unit = 1 m`, w - 12, h - 50,
+  L.add(`${scenario?.place || W2.BAND_LABEL[band]} · 1 unit = 1 m`, w - 12, h - 50,
         { color: P.strong, align: 'right', pri: 11, size: 13 });
 
   L.draw(ctx, w, h);

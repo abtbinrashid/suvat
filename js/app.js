@@ -82,21 +82,77 @@ function buildScenarioScreen() {
   }
 }
 
-/** A small sketch of the situation, drawn from its own numbers. */
+/**
+ * A small sketch of the situation, drawn from its own numbers.
+ *
+ * It shows the flight ALREADY FLOWN: a solid path, a hollow ring where the
+ * object started and a filled dot where it ended up. A dot at the launch point
+ * says "about to happen" and leaves you reading the card for which end is
+ * which; a dot at the landing point says what the situation produced, which is
+ * what you are choosing between.
+ */
 function thumb(s) {
-  const f = flight({ u: s.params.u || 0.001, theta: s.noAngle ? -90 : s.params.theta, h: s.params.h, g: s.params.g || 9.81 });
-  const pts = f.path(40);
-  const maxX = Math.max(1, ...pts.map((p) => p.x));
-  const maxY = Math.max(1, ...pts.map((p) => p.y));
-  const X = (x) => 8 + (x / maxX) * 104;
-  const Y = (y) => 52 - (y / maxY) * 40;
-  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)} ${Y(p.y).toFixed(1)}`).join(' ');
+  const g = s.params.g || 9.81;
+  const theta = s.noAngle ? -90 : (s.aimAtTarget ? aimFor(s) : s.params.theta);
+  const f = flight({ u: s.params.u || 0.001, theta, h: s.params.h, g });
+  const pts = f.path(48);
+  const second = s.second?.from ? s.second.from({ ...s.params, g, theta }, s.markers) : null;
+  const sPts = second
+    ? flight({ u: second.u, theta: second.theta, h: second.h ?? 0, g })
+        .path(40).map((p) => ({ ...p, x: p.x + (second.x0 || 0) }))
+    : null;
+
+  const all = sPts ? pts.concat(sPts) : pts;
+  const xs = all.map((p) => p.x), ys = all.map((p) => p.y);
+  const lo = Math.min(0, ...xs), hi = Math.max(...xs);
+  const top = Math.max(1, ...ys, s.markers?.target?.y ?? 0, s.markers?.heightLine ?? 0);
+
+  // A vertical flight has no width at all, so give it some and centre it —
+  // otherwise it is a line jammed against the left edge.
+  const padX = Math.max((hi - lo) * 0.14, 6);
+  const X0 = lo - padX, X1 = hi + padX;
+  const X = (x) => 6 + ((x - X0) / (X1 - X0)) * 108;
+  const Y = (y) => 51 - (y / (top * 1.14)) * 41;
+  const d = (ps) => ps.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)} ${Y(p.y).toFixed(1)}`).join(' ');
+
+  const end = pts[pts.length - 1];
+  const mk = s.markers || {};
+  const bits = [];
+
+  if (mk.heightLine != null) {
+    bits.push(`<line x1="4" y1="${Y(mk.heightLine).toFixed(1)}" x2="116" y2="${Y(mk.heightLine).toFixed(1)}"
+      stroke="var(--mark)" stroke-width="1.4" stroke-dasharray="4 3" opacity=".85"/>`);
+  }
+  if (s.params.h > 0.3) {
+    bits.push(`<line x1="${X(0).toFixed(1)}" y1="${Y(s.params.h).toFixed(1)}" x2="${X(0).toFixed(1)}" y2="51.5"
+      stroke="var(--ink-faint)" stroke-width="1.4"/>`);
+  }
+  if (sPts) {
+    bits.push(`<path d="${d(sPts)}" fill="none" stroke="var(--second)" stroke-width="1.9"
+      stroke-dasharray="5 3.5" stroke-linecap="round" opacity=".95"/>`);
+    const se = sPts[sPts.length - 1];
+    bits.push(`<circle cx="${X(se.x).toFixed(1)}" cy="${Y(se.y).toFixed(1)}" r="2.6" fill="var(--second)"/>`);
+  }
+  if (mk.target) {
+    bits.push(`<circle cx="${X(mk.target.x).toFixed(1)}" cy="${Y(mk.target.y).toFixed(1)}" r="3.6"
+      fill="none" stroke="var(--mark)" stroke-width="1.6"/>`);
+  }
+
   return `<svg viewBox="0 0 120 60" aria-hidden="true">
-    <line x1="2" y1="52.5" x2="118" y2="52.5" stroke="var(--border)" stroke-width="1"/>
-    ${s.params.h > 0 ? `<line x1="${X(0)}" y1="${Y(s.params.h)}" x2="${X(0)}" y2="52.5" stroke="var(--ink-faint)" stroke-width="1.5"/>` : ''}
-    <path d="${d}" fill="none" stroke="var(--vel)" stroke-width="2.2" stroke-linecap="round"/>
-    <circle cx="${X(0)}" cy="${Y(s.params.h)}" r="3" fill="var(--vel)"/>
+    <line x1="2" y1="51.5" x2="118" y2="51.5" stroke="var(--border)" stroke-width="1"/>
+    ${bits.join('')}
+    <path d="${d(pts)}" fill="none" stroke="var(--vel)" stroke-width="2.3" stroke-linecap="round"/>
+    <circle cx="${X(0).toFixed(1)}" cy="${Y(s.params.h).toFixed(1)}" r="2.6"
+            fill="var(--card)" stroke="var(--vel)" stroke-width="1.6"/>
+    <circle cx="${X(end.x).toFixed(1)}" cy="${Y(end.y).toFixed(1)}" r="3.4" fill="var(--vel)"/>
   </svg>`;
+}
+
+/** The sketch aims at the marker too, so the card matches what you will get. */
+function aimFor(s) {
+  const t = s.markers?.target;
+  if (!t) return s.params.theta;
+  return (Math.atan2(t.y - (s.params.h || 0), t.x) * 180) / Math.PI;
 }
 
 function chooseScenario(id) {
@@ -172,6 +228,13 @@ function buildValuesScreen() {
 }
 
 /* ── solve ──────────────────────────────────────────────────────────── */
+/** The angle that points the launch straight at the draggable target. */
+function aimAngle() {
+  const t = state.markers?.target;
+  if (!t) return undefined;
+  const h = state.h ?? 0;
+  return (Math.atan2(t.y - h, t.x) * 180) / Math.PI;
+}
 /**
  * The boxes hold what the student typed and nothing else. The engine's answers
  * belong at the end of the flight, not spilled back over the form while it is
@@ -189,8 +252,12 @@ function recompute() {
   const k = { ...state.given, theta: state.theta, h: state.h };
   if (scenario.noAngle) { k.u = 0; delete k.theta; }
   if (scenario.lockAngle) k.theta = scenario.params.theta;
+  // AIMED, not angled. The hunter points straight at the monkey, so the angle
+  // is a consequence of where the monkey is — drag it and the angle follows.
+  if (scenario.aimAtTarget) k.theta = aimAngle();
 
-  solved = solveLaunch(k, { noAngle: scenario.noAngle, lockAngle: scenario.lockAngle });
+  solved = solveLaunch(k, { noAngle: scenario.noAngle,
+                            lockAngle: scenario.lockAngle || scenario.aimAtTarget });
 
   const msg = $('solve-msg'), btn = $('launch');
 
@@ -214,6 +281,20 @@ function recompute() {
                       restitution: state.bounce ? state.restitution : 0,
                       maxBounces: state.bounce ? 6 : 0 });
   second = buildSecond(solved.params);
+  // THE CATCH ENDS IT. Aimed straight at the monkey, the banana arrives when
+  // its horizontal displacement equals the monkey's — and watching it sail on
+  // through would undo the whole point of the scenario.
+  if (scenario.aimAtTarget && second) {
+    const tg = state.markers?.target;
+    const tMeet = tg && traj.horiz > 1e-6 ? tg.x / traj.horiz : null;
+    if (tMeet != null && tMeet > 0 && tMeet < traj.tMax) {
+      traj = endAt(traj, tMeet);
+      second = endAt(second, tMeet);
+      state.caught = { t: tMeet, y: tg.y - 0.5 * solved.params.g * tMeet * tMeet };
+    } else {
+      state.caught = null;                 // it never gets there
+    }
+  } else state.caught = null;
   btn.disabled = false;
   btn.textContent = solved.params.u < 0.05
     ? 'Release it'                      // a drop has no launch speed to quote
@@ -230,9 +311,37 @@ function recompute() {
 function buildSecond(p) {
   const s = scenario.second;
   if (!s) return null;
-  const q = s.from ? s.from(p) : s;
+  const q = s.from ? s.from(p, state.markers) : s;
   if (!q) return null;                   // the situation does not support one
-  return flight({ u: q.u, theta: q.theta, h: q.h ?? 0, g: p.g });
+  const f = flight({ u: q.u, theta: q.theta, h: q.h ?? 0, g: p.g });
+  return q.x0 ? shift(f, q.x0) : f;
+}
+
+/**
+ * The same flight, started x0 metres along. `flight()` always launches from
+ * the origin, and a monkey hanging in a tree does not — so the whole thing is
+ * slid sideways rather than the model being bent to allow it.
+ */
+/** The same flight, stopped early. Nothing is re-modelled; the clock is cut. */
+function endAt(f, tEnd) {
+  const T = Math.min(tEnd, f.tMax);
+  // The range bar measures the flight that happened, not the one that would
+  // have happened — a banana caught at 26 m did not travel 36.
+  const reach = f.pos(T).x;
+  return { ...f, tMax: T, tFlight: Math.min(f.tFlight, T), range: reach,
+    pos: (t) => f.pos(Math.min(t, T)),
+    vel: (t) => f.vel(Math.min(t, T)),
+    path: (n, e = T) => f.path(n, Math.min(e, T)),
+    ticks: (n, e = T) => f.ticks(n, Math.min(e, T)) };
+}
+
+function shift(f, x0) {
+  const move = (p) => ({ ...p, x: p.x + x0 });
+  return { ...f, x0,
+    pos: (t) => move(f.pos(t)),
+    path: (n, tEnd) => f.path(n, tEnd).map(move),
+    ticks: (n, tEnd) => f.ticks(n, tEnd).map(move),
+    range: f.range + x0 };
 }
 
 /* ── step 3 · flight ────────────────────────────────────────────────── */

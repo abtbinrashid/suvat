@@ -1,5 +1,8 @@
 // scenarios.js — the situations the playground can set up.
 //
+// Two of them happen somewhere other than the stadium and say so with
+// `backdrop`; see js/render/backdrops.js.
+//
 // A scenario chooses the SITUATION and nothing else. It decides which boxes
 // apply, which markers appear and what the card says it is for. Every number
 // is typed by the student; nothing here is pre-filled.
@@ -7,11 +10,14 @@
 // Three groups, by where the object starts:
 //   from the ground · from a platform · and the ones worth a detour.
 
+/** A scenario away from the stadium stands at the world origin. */
+export const FLAT_SITE = { axis: 'x', at: 0, dir: 1, origin: { x: 0, z: 0 }, place: '', view: '' };
+
 export const GROUPS = [
   { id: 'ground',   label: 'From the ground',
     blurb: 'Starts and lands at the same level, so the path is symmetrical.' },
   { id: 'platform', label: 'From a platform',
-    blurb: 'One platform, four ways off it. All land lower than they started, so none is symmetrical.' },
+    blurb: 'Four ways off one platform. All land lower, so none is symmetrical.' },
   { id: 'look',     label: 'Interesting ones',
     blurb: 'Questions about a moment mid-flight, not the end of it.' },
 ];
@@ -42,7 +48,7 @@ export const SCENARIOS = [
 
   { id: 'platform', group: 'platform', name: 'Off a platform',
     sub: 'thrown flat',
-    note: 'Thrown flat. Falls in the same time as if dropped — try it against Dropped.',
+    note: 'Falls in the same time as if dropped — try it against Dropped.',
     params: { u: 20, theta: 0, h: 25, g: 9.81 }, lockAngle: true },
 
   { id: 'platform-angle', group: 'platform', name: 'Up and off a platform',
@@ -83,6 +89,39 @@ export const SCENARIOS = [
         const uy = p.h / meet;
         const ux = Math.max(p.u, 1e-6);
         return { u: Math.hypot(ux, uy), theta: (Math.atan2(uy, ux) * 180) / Math.PI, h: 0 };
+      },
+    } },
+
+  /* ── the two that are not at the stadium ──────────────────────────── */
+  { id: 'bullet', group: 'look', name: 'Fired and dropped',
+    sub: 'both land together',
+    note: 'One bullet fired flat, one released from the same height at the same instant. They hit the floor TOGETHER, however fast the shot — because the horizontal push does nothing to the vertical fall. Change the muzzle speed and watch the landing time refuse to move.',
+    params: { u: 34, theta: 0, h: 10, g: 9.81 }, lockAngle: true,
+    backdrop: 'warehouse', site: FLAT_SITE, secondSprite: true,
+    place: 'A test range in a distribution shed',
+    second: {
+      label: 'released, not fired',
+      /** The same bullet, let go rather than fired. Nothing else changes. */
+      from(p) {
+        if (!(p.h > 0.05)) return null;        // needs a height to fall from
+        return { u: 0, theta: -90, h: p.h };
+      },
+    } },
+
+  { id: 'monkey', group: 'look', name: 'Monkey and hunter',
+    sub: 'aim straight at it',
+    note: 'The hunter aims the banana directly AT the monkey. The monkey lets go the instant it is fired. Both fall by exactly ½gt² from where they would have been, so the banana cannot miss — drag the monkey anywhere and it still hits. The only way to fail is to throw too slowly and let the monkey reach the sand first.',
+    params: { u: 22, theta: 0, h: 1.4, g: 9.81 },
+    backdrop: 'beach', site: FLAT_SITE, secondSprite: true,
+    place: 'A beach, and a monkey in a palm',
+    markers: { target: { x: 26, y: 11.5 } }, dragTarget: true, aimAtTarget: true,
+    second: {
+      label: 'the monkey, falling',
+      /** It drops from where it hung — no throw, no angle, just gravity. */
+      from(p, markers) {
+        const t = markers?.target;
+        if (!t || !(t.y > 0.2)) return null;
+        return { u: 0, theta: -90, h: t.y, x0: t.x };
       },
     } },
 ];
