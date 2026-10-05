@@ -136,6 +136,8 @@ export function drawSection(A) {
   sky(A);
   nightGlow(A);
   farField(A);
+  strata(A);
+  foundations(A);
   surfaces(A);
   groundShade(A);
   groundMarks(A);
@@ -266,6 +268,79 @@ function farField(A) {
   ctx.restore();
 }
 
+/* ── the ground, in section ─────────────────────────────────────────────
+   Below the datum is not simply "not sky". This is a SECTION: it has been
+   cut through the ground as much as through the building, and what a cut
+   through ground shows is what the ground is made of. A flat slab of brown
+   says nothing, and it was a quarter of the frame saying it.
+
+   Two strata and a hatch. Topsoil and subsoil are drawn in METRES like
+   everything else in this world, so at pitch level they are the depth they
+   really are and at district zoom they are the two pixels they should be.
+   The hatch below them is spaced in PIXELS on purpose: it is the drawing
+   convention for "ground, continuing", not a thing with a size, and a hatch
+   measured in metres would either vanish or turn into fence posts. */
+function strata(A) {
+  const { ctx, w, h, sy, tn } = A;
+  const gy = sy(0);
+  if (gy >= h) return;
+  const top = Math.max(0, gy);
+  ctx.save();
+  const soil = [[0.4, mixTone(tn.earth, tn.terrain, 0.5)],
+                [2.6, mixTone(tn.earth, tn.terrain, 0.18)]];
+  let prev = 0;
+  for (const [d, tone] of soil) {
+    const y0 = Math.max(top, sy(-prev)), y1 = Math.min(h, sy(-d));
+    if (y1 - y0 > 0.6) { ctx.fillStyle = tone; ctx.fillRect(0, y0, w, y1 - y0); }
+    prev = d;
+  }
+  ctx.strokeStyle = tn.structureDark; ctx.globalAlpha = 0.28; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const [d] of soil) {
+    const y = Math.round(sy(-d)) + 0.5;
+    if (y > top + 1 && y < h) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  }
+  ctx.stroke();
+  const yH = Math.max(top, sy(-2.6));
+  if (h - yH > 10) {
+    ctx.globalAlpha = 0.15; ctx.strokeStyle = tn.structure;
+    ctx.beginPath();
+    for (let x = -h; x < w + h; x += 26) { ctx.moveTo(x, h); ctx.lineTo(x + (h - yH), yH); }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Nothing this heavy stands on turf. Every stand, and every building above
+   about three metres, gets the raft it would really need, sized off its own
+   height — which is also the cue that says the dark wedge above the datum is
+   a BUILDING and not a hill. */
+function foundations(A) {
+  const { ctx, sx, sy, tn, section, span } = A;
+  if (span > 1100) return;
+  const gy = sy(0);
+  if (gy > A.h) return;
+  ctx.save();
+  ctx.fillStyle = tn.structureDark; ctx.globalAlpha = 0.92;
+  const pad = (u0, u1, depth) => {
+    const x0 = Math.min(sx(u0), sx(u1)), x1 = Math.max(sx(u0), sx(u1));
+    if (x1 - x0 < 2 || x1 < 0 || x0 > A.w) return;
+    ctx.fillRect(x0, gy, x1 - x0, Math.max(2, sy(-depth) - gy));
+  };
+  for (const deck of section.decks || []) {
+    const prof = deckProfile(deck);
+    if (!prof.length) continue;
+    const us = prof.flatMap((q) => [q.u0, q.u1]);
+    const top = Math.max(...prof.map((q) => Math.max(q.y0, q.y1)));
+    pad(Math.min(...us), Math.max(...us), 1.2 + top / 14);
+  }
+  for (const b of section.blocks) {
+    if (b.y1 - b.y0 < 3 || b.tag === 'goal net') continue;
+    pad(b.u0, b.u1, 0.5 + (b.y1 - b.y0) / 16);
+  }
+  ctx.restore();
+}
+
 /* ── flat surfaces ──────────────────────────────────────────────────── */
 function surfaces(A) {
   const { ctx, sx, sy, h, tn, span, section } = A;
@@ -379,8 +454,14 @@ function beyond(A) {
     const yT = sy(b.y1), yB = sy(b.y0);
     if (Math.abs(yB - yT) < 1.2) continue;
     ctx.save();
-    ctx.globalAlpha = 0.34 * (1 - b.off * 0.6);
-    rect(ctx, sx(b.u0), yT, sx(b.u1), yB, tn[b.tone] || tn.structure);
+    // Distance is haze. Fading everything behind the cut by one flat alpha
+    // made the near ones weak and the far ones no further away; mixing each
+    // towards the sky instead is what the air actually does, and it is the
+    // only depth cue a drawing with no perspective in it can have.
+    const t = clamp(b.off, 0, 1);
+    ctx.globalAlpha = 0.58 * (1 - t * 0.42);
+    rect(ctx, sx(b.u0), yT, sx(b.u1), yB,
+         mixTone(tn[b.tone] || tn.structure, tn.haze, 0.26 + 0.46 * t));
     ctx.restore();
   }
 }
@@ -570,14 +651,20 @@ function decks(A) {
     for (const p of prof) {
       if (p.t === 'tier') {
         const steps = stepPts(p);
-        const isGround = p === prof[0];
-        // the raking slab — or, for the lowest tier, the solid bank it sits on
-        const under = isGround
-          ? [{ u: p.u1, y: 0 }, { u: p.u0, y: 0 }]
-          : [{ u: p.u1, y: p.y1 - SLAB }, { u: p.u0, y: p.y0 - SLAB }];
+        // EVERY tier is a raking slab, the lowest one included. It used to be
+        // filled solid from the back row all the way down to the pitch, which
+        // put a twenty-metre triangle of the darkest tone in the drawing — a
+        // third of the frame, and an embankment rather than a building. No
+        // bowl is built that way: the lower tier sits on a slab with the
+        // lower concourse under it, which is where everyone stands at half
+        // time. Flooring the underside at zero keeps the front rows on solid
+        // fill, where they really do sit, and opens the void only as the rake
+        // climbs away from the pitch.
+        const under = [{ u: p.u1, y: Math.max(0, p.y1 - SLAB) },
+                       { u: p.u0, y: Math.max(0, p.y0 - SLAB) }];
         poly(ctx, [...steps, ...under].map((q) => ({ x: sx(q.u), y: sy(q.y) })),
              tn.structureDark, tn.structure, 1.1);
-        if (!isGround) {
+        {
           // what holds it up: a rear wall, and one raking prop
           band(A, p.u1 - s * WALL_T, p.u1, below, p.y1 - SLAB, tn.structureDark);
           // a raking prop drawn as a solid member rather than a wire
@@ -649,7 +736,7 @@ function interiorStructure(A, deck, prof, lo, hi, open = 1) {
     if (p.t === 'tier' && p !== prof[0]) floors.push({ y: p.y0 - SLAB - 2.6, u0: p.u0, u1: p.u1 });
   }
   ctx.save();
-  ctx.globalAlpha = 0.5 * open; ctx.strokeStyle = tn.structure;
+  ctx.globalAlpha = 0.62 * open; ctx.strokeStyle = tn.structure;
   ctx.lineWidth = Math.max(1, 0.55 * A.scale);
   const colStep = 8;
   const a = Math.min(lo, hi), b = Math.max(lo, hi);
@@ -753,9 +840,23 @@ function crowd(A, p, f) {
       const u = p.u0 + (p.u1 - p.u0) * k, y = p.y0 + (p.y1 - p.y0) * k + SEAT_BAND;
       const X = sx(u), Y = sy(y), hpx = Math.abs(sy(y + H) - Y);
       ctx.fillStyle = r < 0.45 ? tn.prop : tn.seatAlt;
-      ctx.fillRect(X - Math.max(1.5, 0.22 * A.scale), Y - hpx * 0.74,
-                   Math.max(2.8, 0.44 * A.scale), hpx * 0.74);
-      ctx.beginPath(); ctx.arc(X, Y - hpx * 0.86, Math.max(1, headR * A.scale), 0, 7); ctx.fill();
+      // Shoulders, then a head on top of them. A bar with a dot over it is a
+      // peg; what makes a crowd legible as PEOPLE — and so usable as the
+      // ruler it is — is that the silhouette narrows at the neck. The lean
+      // is deterministic, so the same spectator leans the same way forever.
+      const bw = Math.max(2.8, 0.44 * A.scale);
+      const lean = (r - 0.5) * bw * 0.34;
+      const hr = Math.max(1, headR * A.scale);
+      ctx.beginPath();
+      ctx.moveTo(X - bw / 2, Y);
+      ctx.lineTo(X + bw / 2, Y);
+      ctx.lineTo(X + bw * 0.42 + lean, Y - hpx * 0.60);
+      ctx.lineTo(X + bw * 0.22 + lean, Y - hpx * 0.70);
+      ctx.lineTo(X - bw * 0.22 + lean, Y - hpx * 0.70);
+      ctx.lineTo(X - bw * 0.42 + lean, Y - hpx * 0.60);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(X + lean, Y - hpx * 0.70 - hr * 0.86, hr, 0, 7); ctx.fill();
     }
   } else if (stepPx > 0.85) {
     // the same people, too far off to resolve: a stippled band along the rake
@@ -1021,7 +1122,7 @@ function tree(A, p, alpha, detail, T) {
   ctx.save(); ctx.globalAlpha = alpha;
   if (hpx < 4) { ctx.fillStyle = tn.park; ctx.fillRect(X - 1.5, Y1, 3, hpx); ctx.restore(); return; }
   footing(A, X, Y0, Math.max(3, T.canopyR * 0.7 * A.scale), alpha);
-  ctx.strokeStyle = tn.brick; ctx.lineWidth = Math.max(1, T.trunkR * 2 * A.scale);
+  ctx.strokeStyle = tn.trunk; ctx.lineWidth = Math.max(1, T.trunkR * 2 * A.scale);
   ctx.beginPath(); ctx.moveTo(X, Y0); ctx.lineTo(X, sy(base + hh * 0.42)); ctx.stroke();
   const r = T.canopyR * v * A.scale;
   ctx.fillStyle = (p.v || 0) > 0.72 ? tn.parkAlt : tn.park;
