@@ -51,8 +51,8 @@ team strip.
 
 | Object | Dimension | Value (m) |
 | --- | --- | --- |
-| Bowl plan | length × width | 250 × 200 |
-| Bowl plan | corner radius | 45 |
+| Bowl plan | length × width | 250 × 210 |
+| Bowl plan | corner radius | 83 |
 | North / south front row | at |z| | 42 |
 | East / west front row | at |x| | 62 |
 | North / south height | top of rear facade | 36 |
@@ -61,7 +61,7 @@ team strip.
 
 ### North and south — three tiers and a ring of boxes
 
-Front row at 42 m from the centre line; 58 m of depth behind it.
+Front row at 42 m from the centre line; 63 m of depth behind it.
 `d` is the outward distance from the front row.
 
 | Element | d from | d to | y from | y to | Rows | Tread | Rise | Rake |
@@ -71,10 +71,10 @@ Front row at 42 m from the centre line; 58 m of depth behind it.
 | parapet | 20.2 | 20.2 | 10 | 11.1 | — | — | — | — |
 | box glazing | 20.2 | 20.5 | 10 | 14 | — | — | — | — |
 | boxes, roof deck | 20.5 | 30 | 14 | 14 | — | — | — | — |
-| middle tier | 30 | 36.4 | 14 | 17.44 | 8 | 0.8 | 0.43 | 28.3° |
-| middle rear | 36.4 | 38 | 17.44 | 25 | — | — | — | — |
+| middle tier | 30 | 34.8 | 14 | 16.58 | 6 | 0.8 | 0.43 | 28.3° |
+| middle rear | 34.8 | 36 | 16.58 | 25 | — | — | — | — |
 | upper tier | 36 | 53.6 | 25 | 34.9 | 22 | 0.8 | 0.45 | 29.4° |
-| rear facade | 53.6 | 58 | 34.9 | 36 | — | — | — | — |
+| rear facade | 53.6 | 63 | 34.9 | 36 | — | — | — | — |
 
 ### West — one steep tier
 
@@ -101,9 +101,9 @@ Front row at 62 m from the centre line; 63 m of depth behind it.
 | box glazing | 18.5 | 18.8 | 9.2 | 13 | — | — | — | — |
 | boxes, roof deck | 18.8 | 27 | 13 | 13 | — | — | — | — |
 | tier 2 | 27 | 35 | 13 | 17.2 | 10 | 0.8 | 0.42 | 27.7° |
-| tier 2 rear | 35 | 36.5 | 17.2 | 21.5 | — | — | — | — |
+| tier 2 rear | 35 | 36 | 17.2 | 21.5 | — | — | — | — |
 | tier 3 | 36 | 45.6 | 21.5 | 26.78 | 12 | 0.8 | 0.44 | 28.8° |
-| tier 3 rear | 45.6 | 47 | 26.78 | 30 | — | — | — | — |
+| tier 3 rear | 45.6 | 46.5 | 26.78 | 30 | — | — | — | — |
 | tier 4, gallery | 46.5 | 54.5 | 30 | 34.6 | 10 | 0.8 | 0.46 | 29.9° |
 | rear facade | 54.5 | 63 | 34.6 | 35.6 | — | — | — | — |
 
@@ -117,8 +117,8 @@ A cable net on an elliptical compression ring, open over the pitch.
 | Outer fascia | bottom edge | 43 |
 | Roof plane | at the outer structure line | 46.5 |
 | Compression ring | top / bottom | 44 / 42.5 |
-| Roof opening | semi-axes a × b | 64 × 41 |
-| Roof opening | full size | 128 × 82 |
+| Roof opening | semi-axes a × b | undefined × undefined |
+| Roof opening | full size | NaN × NaN |
 | Floodlight strip | height, width | 42, 1.2 |
 | Cables | radial / hoop | 28 / 3 |
 
@@ -158,6 +158,7 @@ open to the sky and every seat is under cover.
 | P1 | -210 to -70 | 150 to 230 |
 | P2 | 80 to 215 | 150 to 215 |
 | P3 | -450 to -340 | -150 to 150 |
+| P4 | -62 to 62 | 152 to 232 |
 
 | Terrace block | x range | z range |
 | --- | --- | --- |
@@ -214,9 +215,9 @@ last quarter of its range, so nothing pops.
 | --- | --- |
 | netMesh | 260 |
 | grassBlades | 24 |
-| people | 230 |
+| people | 460 |
 | boardPanels | 260 |
-| pitchLines | 560 |
+| pitchLines | 900 |
 | players | 340 |
 | seatRows | 130 |
 | seatTexture | 440 |

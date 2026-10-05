@@ -16,7 +16,11 @@ import { D } from '../world/dims.js';
 /* ── scenery colours, cached per theme ──────────────────────────────── */
 let TONE = null, TONE_KEY = '';
 const KEYS = {
-  skyTop: '--sky-top', skyBottom: '--sky-bottom', haze: '--haze',
+  skyTop: '--sky-top', skyMid: '--sky-mid', skyBottom: '--sky-bottom', haze: '--haze',
+  sun: '--sun', sunGlow: '--sun-glow', shadow: '--shadow', skyFill: '--sky-fill',
+  render: '--render', panel: '--panel', roofingAlt: '--roofing-alt',
+  seatHi: '--seat-hi', parkAlt: '--park-alt',
+  carA: '--car-a', carB: '--car-b', carC: '--car-c', carD: '--car-d', carE: '--car-e',
   grass: '--grass', grassAlt: '--grass-alt', runoff: '--runoff',
   pitchline: '--pitchline', concrete: '--concrete', paving: '--paving',
   asphalt: '--asphalt', roadline: '--roadline', ballast: '--ballast',
@@ -37,7 +41,36 @@ export function tones() {
   for (const [name, v] of Object.entries(KEYS)) TONE[name] = cssVar(v, '#888');
   return TONE;
 }
-export const dropToneCache = () => { TONE = null; };
+export const dropToneCache = () => { TONE = null; MIX.clear(); };
+
+/* ── light, in a flat drawing ──────────────────────────────────────────
+   A section has no normals to shade, so the light has to be put in by hand:
+   surfaces facing the low sun take a warm lift, surfaces turned away take
+   the cool of the sky, and the volume behind the cut graduates from light at
+   the top to shadow at the bottom. It is the difference between a drawing
+   of a building and a diagram of one. */
+const MIX = new Map();
+const rgbOf = (c) => {
+  const x = c.trim();
+  if (x.startsWith('#')) {
+    const h = x.slice(1);
+    return h.length === 3 ? h.split('').map((d) => parseInt(d + d, 16))
+                          : [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  }
+  const m = x.match(/-?[\d.]+/g);
+  return m ? [+m[0], +m[1], +m[2]] : [128, 128, 128];
+};
+export function mixTone(a, b, t) {
+  const key = `${a}|${b}|${t.toFixed(3)}`;
+  if (MIX.has(key)) return MIX.get(key);
+  const A = rgbOf(a), B = rgbOf(b);
+  const out = `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`;
+  MIX.set(key, out);
+  return out;
+}
+/** Warm if the surface turns towards the sun, cool if it turns away. */
+const sunward = (tn, tone, facing) =>
+  facing > 0 ? mixTone(tone, tn.sun, 0.17) : mixTone(tone, tn.skyFill, 0.14);
 
 /* ── level of detail ────────────────────────────────────────────────── */
 /** 1 well inside the limit, 0 past it, a ramp over the last quarter. */
@@ -96,10 +129,16 @@ export function drawSection(A) {
   const mpp = 1 / A.scale;                      // metres per pixel
   A.vis = vis; A.mpp = mpp; A.uMin = uMin; A.uMax = uMax;
 
+  // while the camera is moving, the expensive layers are the ones nobody is
+  // reading: props, house windows, individual seats
+  if (A.moving) { A.span = Math.max(A.span, D.lod.people + 1); }
   sky(A);
+  nightGlow(A);
   farField(A);
   surfaces(A);
+  groundShade(A);
   groundMarks(A);
+  beyond(A);
   blocks(A);
   decks(A);
   roofSection(A);
@@ -108,15 +147,43 @@ export function drawSection(A) {
 }
 
 /* ── sky ────────────────────────────────────────────────────────────── */
-function sky({ ctx, w, h, sy, tn }) {
-  const g = ctx.createLinearGradient(0, 0, 0, h);
+/* The sun sits low in the west, which is the left of every section drawn
+   along the pitch and the far side of every section drawn across it. Its
+   position is fixed in the world, not on the screen, so it stays put while
+   the camera moves — a sun that slides with the viewport is a sticker. */
+const SUN_U = -260, SUN_Y = 34;
+
+function sky(A) {
+  const { ctx, w, h, sy, sx, tn } = A;
+  const gy = sy(0);
+  const g = ctx.createLinearGradient(0, 0, 0, Math.max(gy, 1));
   g.addColorStop(0, tn.skyTop);
+  g.addColorStop(0.74, tn.skyMid);
   g.addColorStop(1, tn.skyBottom);
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+
+  // the sun, and the light it throws along the horizon. After dark there is
+  // no sun, and a warm smear in the sky at midnight is just a bug with a
+  // gradient on it — the only glow at night comes off the bowl.
+  const sunX = sx(SUN_U), sunY = sy(SUN_Y);
+  if (TONE_KEY === 'light') {
+    const far = Math.max(w, h) * 0.9;
+    const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, far);
+    glow.addColorStop(0, tn.sunGlow);
+    glow.addColorStop(0.35, 'rgba(255,206,138,0.14)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save(); ctx.fillStyle = glow; ctx.fillRect(0, 0, w, Math.max(0, gy)); ctx.restore();
+  }
+  if (TONE_KEY === 'light' && sunX > -200 && sunX < w + 200) {
+    ctx.save(); ctx.fillStyle = tn.sun; ctx.globalAlpha = 0.95;
+    ctx.beginPath(); ctx.arc(sunX, sunY, Math.max(7, 9 * Math.min(2, A.scale / 6)), 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  clouds(A, gy);
   // A section has no atmosphere in it, so the haze is a hint and no more:
-  // just enough to stop the far district cutting the sky like a blade.
-  const gy = sy(0);
-  if (gy > 0 && gy < h) {
+  // just enough to stop the far district cutting the sky like a blade. At
+  // pitch level there is no distance to haze, so there is none.
+  if (A.span > 60 && gy > 0 && gy < h) {
     const top = Math.max(0, gy - 34);
     const band = ctx.createLinearGradient(0, top, 0, gy);
     band.addColorStop(0, 'rgba(0,0,0,0)');
@@ -127,7 +194,53 @@ function sky({ ctx, w, h, sy, tn }) {
   }
   // Below the datum is ground, and ground is solid. Saying so is what makes
   // the flat plane the model assumes look like a plane rather than a line.
-  if (gy < h) { ctx.fillStyle = tn.earth; ctx.fillRect(0, Math.max(0, gy), w, h - Math.max(0, gy)); }
+  if (gy < h) {
+    const e = ctx.createLinearGradient(0, Math.max(0, gy), 0, h);
+    e.addColorStop(0, tn.earth);
+    e.addColorStop(1, TONE_KEY === 'light' ? '#574f45' : '#111118');
+    ctx.fillStyle = e; ctx.fillRect(0, Math.max(0, gy), w, h - Math.max(0, gy));
+  }
+}
+
+/* Cloud banks, fixed in the world so they give the sky somewhere to be. */
+function clouds(A, gy) {
+  const { ctx, w, sx, sy, tn } = A;
+  if (gy < 60) return;
+  const band = TONE_KEY === 'light' ? 'rgba(255,255,255,0.40)' : 'rgba(150,170,205,0.07)';
+  ctx.save(); ctx.fillStyle = band;
+  for (let i = 0; i < 14; i++) {
+    const u = -1800 + i * 310 + (i % 3) * 90;
+    const y = 90 + ((i * 37) % 9) * 13;
+    const X = sx(u), Y = sy(y);
+    const rx = Math.max(40, 120 * Math.min(3, A.scale / 4)), ry = rx * 0.17;
+    if (X < -rx * 2 || X > w + rx * 2 || Y > gy - 10) continue;
+    ctx.globalAlpha = 0.5 + ((i * 13) % 5) / 14;
+    ctx.beginPath(); ctx.ellipse(X, Y, rx, ry, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(X + rx * 0.45, Y - ry * 0.7, rx * 0.5, ry * 0.8, 0, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* The glow over the bowl. At district range the floodlights themselves are
+   below the level of detail, and the bowl was going dark while the houses
+   kept their lit windows — exactly backwards. This is the one night effect
+   that gets STRONGER as you pull away, because that is how it works. */
+function nightGlow(A) {
+  const { ctx, sy, sx, tn, section, span } = A;
+  if (TONE_KEY === 'light' || span < 110) return;
+  const wings = section.roof.wings;
+  if (wings.length !== 2) return;
+  const u0 = Math.min(wings[0].inner, wings[1].inner), u1 = Math.max(wings[0].inner, wings[1].inner);
+  const cx = sx((u0 + u1) / 2), base = sy(D.roof.fasciaTop);
+  const r = Math.max(110, Math.abs(sx(u1) - sx(u0)) * 1.3);
+  const g = ctx.createRadialGradient(cx, base, 0, cx, base, r);
+  g.addColorStop(0, tn.flood); g.addColorStop(0.45, 'rgba(255,238,194,0.30)');
+  g.addColorStop(1, 'rgba(255,238,194,0)');
+  ctx.save();
+  ctx.globalAlpha = clamp((span - 110) / 420, 0, 1) * 0.40;
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r, base - r, r * 2, r * 2);
+  ctx.restore();
 }
 
 /* ── beyond the district: a labelled distance grid, not a hard edge ─── */
@@ -184,6 +297,50 @@ function surfaces(A) {
   }
 }
 
+/* ── what the stands throw across the ground ────────────────────────────
+   Late afternoon, the sun 28° up in the west: a 35 m stand lays 66 m of
+   shadow across the pitch. It is the one cue that tells you, in a flat
+   drawing with no perspective in it, that the thing on the left is tall and
+   the thing in the middle is not. */
+const SUN_ELEV = 28 * Math.PI / 180;
+const SHADOW_RUN = 1 / Math.tan(SUN_ELEV);        // metres of shadow per metre
+
+function groundShade(A) {
+  const { ctx, sx, sy, tn, section, span } = A;
+  if (span > 1400) return;
+  // the sun's component IN the cutting plane: along the pitch it is the full
+  // westerly cast, across the pitch only the part of it that points that way
+  const inPlane = section.axis === 'x' ? -0.74 : 0.28;
+  const dir = Math.sign(section.dir * inPlane) || 1;
+  const casters = [];
+  for (const deck of section.decks) {
+    const prof = deckProfile(deck);
+    const us = prof.flatMap((q) => [q.u0, q.u1]);
+    const hTop = Math.max(...prof.map((q) => Math.max(q.y0, q.y1)));
+    casters.push({ edge: dir > 0 ? Math.max(...us) : Math.min(...us), h: hTop });
+  }
+  for (const b of section.blocks) {
+    if (b.y1 - b.y0 < 2.5) continue;
+    casters.push({ edge: dir > 0 ? Math.max(b.u0, b.u1) : Math.min(b.u0, b.u1), h: b.y1 });
+  }
+  ctx.save();
+  ctx.fillStyle = tn.shadow;
+  const gy = sy(0), thick = Math.max(2.5, 0.5 * A.scale);
+  for (const c of casters) {
+    const run = c.h * SHADOW_RUN * Math.abs(inPlane);
+    if (run < 2) continue;
+    const x0 = sx(c.edge), x1 = sx(c.edge + dir * run);
+    if (Math.max(x0, x1) < 0 || Math.min(x0, x1) > A.w) continue;
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, tn.shadow);
+    g.addColorStop(0.72, tn.shadow);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(Math.min(x0, x1), gy - thick, Math.abs(x1 - x0), thick + 2);
+  }
+  ctx.restore();
+}
+
 /* ── markings on those surfaces ─────────────────────────────────────── */
 function groundMarks(A) {
   const { ctx, sx, sy, tn, span, section } = A;
@@ -198,14 +355,32 @@ function groundMarks(A) {
     // to be buried under the turf body painted downward from y = 0.
     const yTop = sy(0) - 3.4;
     if (m.run) {
+      // The cutting plane lying ALONG a painted line sees it end-on. Drawn
+      // three pixels deep on a four-pixel turf band it painted the whole
+      // pitch white, which is not what a 0.12 m line looks like.
       if (!A.vis(m.u0, m.u1)) continue;
-      ctx.fillRect(sx(m.u0), yTop, sx(m.u1) - sx(m.u0), 3);
+      ctx.fillRect(sx(m.u0), yTop + 1.4, sx(m.u1) - sx(m.u0), 1.8);
     } else {
       if (!A.vis(m.u, m.u)) continue;
       const wpx = Math.max(2, m.w * A.scale);
       ctx.fillRect(sx(m.u) - wpx / 2, yTop, wpx, 3.4);
     }
     ctx.globalAlpha = 1;
+  }
+}
+
+/** Built things the plane misses but that stand just beyond it. Drawn first,
+    lighter, and with no detail: present, but never mistaken for the cut. */
+function beyond(A) {
+  const { ctx, sx, sy, tn, section } = A;
+  for (const b of section.behind || []) {
+    if (!A.vis(b.u0, b.u1)) continue;
+    const yT = sy(b.y1), yB = sy(b.y0);
+    if (Math.abs(yB - yT) < 1.2) continue;
+    ctx.save();
+    ctx.globalAlpha = 0.34 * (1 - b.off * 0.6);
+    rect(ctx, sx(b.u0), yT, sx(b.u1), yB, tn[b.tone] || tn.structure);
+    ctx.restore();
   }
 }
 
@@ -224,16 +399,24 @@ function blocks(A) {
       if (houseF <= 0) continue;
       ctx.globalAlpha = houseF;
       const eavesY = sy(b.eaves);
+      // Streets are not built from one material. Wall and roof come from the
+      // row's own position, so a district has brick, render and panel in it
+      // rather than one repeated house.
+      const hsh = Math.abs(Math.round(b.u0 * 3 + b.y0 * 11));
+      const wall = [tn.brick, tn.render, tn.brick, tn.panel][hsh % 4];
+      const roofT = hsh % 3 ? tn.roofing : tn.roofingAlt;
+      const face = SUN_U - (b.u0 + b.u1) / 2 > 0 ? 1 : -1;
       if (b.gable) {
         // cut across a row: the gable end, so the ridge shows as a peak
         poly(ctx, [{ x: x0, y: yB }, { x: x0, y: eavesY }, { x: (x0 + x1) / 2, y: yT },
-                   { x: x1, y: eavesY }, { x: x1, y: yB }], tn.brick);
-        poly(ctx, [{ x: x0 - 1, y: eavesY }, { x: (x0 + x1) / 2, y: yT }, { x: x1 + 1, y: eavesY }], tn.roofing);
+                   { x: x1, y: eavesY }, { x: x1, y: yB }], sunward(tn, wall, face));
+        poly(ctx, [{ x: x0 - 1, y: eavesY }, { x: (x0 + x1) / 2, y: yT }, { x: x1 + 1, y: eavesY }],
+             mixTone(roofT, tn.sun, 0.22));
       } else {
         // cut along a row: a long wall under a ridge seen end-on
-        rect(ctx, x0, eavesY, x1, yB, tn.brick);
-        rect(ctx, x0, yT, x1, eavesY, tn.roofing);
-        if (detF > 0) windowsAlong(A, b, eavesY, yB, detF * houseF);
+        rect(ctx, x0, eavesY, x1, yB, sunward(tn, wall, face));
+        rect(ctx, x0, yT, x1, eavesY, mixTone(roofT, tn.sun, 0.22));
+        if (detF > 0) windowsAlong(A, b, eavesY, yB, detF * houseF, hsh);
       }
       ctx.globalAlpha = 1; continue;
     }
@@ -260,7 +443,7 @@ function blocks(A) {
 }
 
 /** The 5.5 m frontage rhythm of a terrace row, once it is big enough to see. */
-function windowsAlong(A, b, eavesY, yB, alpha) {
+function windowsAlong(A, b, eavesY, yB, alpha, hsh = 0) {
   const { ctx, sx, tn } = A;
   const n = Math.floor(Math.abs(b.u1 - b.u0) / D.house.front);
   if (n < 1 || n > 400) return;
@@ -270,7 +453,7 @@ function windowsAlong(A, b, eavesY, yB, alpha) {
   const hgt = yB - eavesY;
   for (let i = 0; i < n; i++) {
     const X = sx(Math.min(b.u0, b.u1) + (i + 0.5) * D.house.front);
-    const lit = TONE_KEY !== 'light' && ((i * 7) % 5 < 2);
+    const lit = TONE_KEY !== 'light' && ((i * 7 + hsh) % 5 < 2);
     ctx.fillStyle = lit ? tn.window : tn.structureDark;
     ctx.globalAlpha = alpha * (lit ? 0.85 : 0.5);
     ctx.fillRect(X - wpx * 0.18, eavesY + hgt * 0.18, wpx * 0.36, hgt * 0.26);
@@ -351,8 +534,35 @@ function decks(A) {
       }
       top.push({ x: sx(u), y: sy(y) });
     }
-    poly(ctx, [{ x: sx(lo), y: sy(0) }, ...top, { x: sx(hi), y: sy(0) }], tn.interior);
-    interiorStructure(A, deck, prof, lo, hi);
+    // Outlined in the poché tone, not the light one: the interior fill is
+    // within 1.2:1 of the sky in both themes, so the silhouette is carried by
+    // the line, not by the fill.
+    const shell = [{ x: sx(lo), y: sy(0) }, ...top, { x: sx(hi), y: sy(0) }];
+    const topY = Math.min(...top.map((q) => q.y));
+    const grad = ctx.createLinearGradient(0, topY, 0, sy(0));
+    grad.addColorStop(0, mixTone(tn.interior, tn.sun, 0.20));
+    grad.addColorStop(1, mixTone(tn.interior, tn.skyFill, 0.16));
+    poly(ctx, shell, grad, tn.structureDark, 1.8);
+    // A section shows you inside a building. From nine hundred metres away
+    // you cannot see inside a building, and a stand that stays pale at that
+    // distance reads as a hole in the district rather than a mass in it — so
+    // the cut convention fades out and the building closes up.
+    // the roof keeps the back of every stand in shade
+    if (TONE_KEY === 'light') {
+      const topY = Math.min(...top.map((q) => q.y));
+      const sh = ctx.createLinearGradient(0, sy(D.roof.fasciaBottom), 0, sy(D.roof.fasciaBottom - 22));
+      sh.addColorStop(0, tn.shadow); sh.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(shell[0].x, shell[0].y);
+      for (const q of shell.slice(1)) ctx.lineTo(q.x, q.y);
+      ctx.closePath(); ctx.clip();
+      ctx.globalAlpha = 0.55; ctx.fillStyle = sh;
+      ctx.fillRect(0, Math.min(topY, sy(D.roof.fasciaBottom)), A.w, Math.abs(sy(D.roof.fasciaBottom - 22) - sy(D.roof.fasciaBottom)) + 40);
+      ctx.restore();
+    }
+    const open = fade(span, D.lod.seatTexture);
+    if (open < 1) { ctx.save(); ctx.globalAlpha = (1 - open) * 0.85; poly(ctx, shell, tn.structureDark); ctx.restore(); }
+    if (open > 0.02) interiorStructure(A, deck, prof, lo, hi, open);
 
     /* 2 · each cut element, in the order it is built */
     let below = 0;
@@ -429,7 +639,7 @@ function decks(A) {
 /** What is actually behind the cut: concourse floors, a column grid and a
     stair core. A hundred-metre-deep stand filled with one flat tone is an
     embankment, not a building. */
-function interiorStructure(A, deck, prof, lo, hi) {
+function interiorStructure(A, deck, prof, lo, hi, open = 1) {
   const { ctx, sx, sy, tn } = A;
   const sgn = prof[0].s;
   const floors = [];
@@ -438,8 +648,7 @@ function interiorStructure(A, deck, prof, lo, hi) {
     if (p.t === 'tier' && p !== prof[0]) floors.push({ y: p.y0 - SLAB - 2.6, u0: p.u0, u1: p.u1 });
   }
   ctx.save();
-  // the column grid, from the ground up to whatever is over it
-  ctx.globalAlpha = 0.5; ctx.strokeStyle = tn.structure;
+  ctx.globalAlpha = 0.5 * open; ctx.strokeStyle = tn.structure;
   ctx.lineWidth = Math.max(1, 0.55 * A.scale);
   const colStep = 8;
   const a = Math.min(lo, hi), b = Math.max(lo, hi);
@@ -460,7 +669,7 @@ function interiorStructure(A, deck, prof, lo, hi) {
     ctx.stroke();
   }
   // the concourse floors
-  ctx.globalAlpha = 0.85; ctx.fillStyle = tn.concrete;
+  ctx.globalAlpha = 0.85 * open; ctx.fillStyle = tn.concrete;
   for (const f of floors) {
     const y = sy(f.y);
     if (f.y < 1) continue;
@@ -470,7 +679,7 @@ function interiorStructure(A, deck, prof, lo, hi) {
   const coreU = lo + (hi - lo) * 0.62, coreW = 5.5;
   const coreTop = Math.max(...prof.map((p) => Math.max(p.y0, p.y1))) * 0.62;
   if (coreTop * A.scale > 24) {
-    ctx.globalAlpha = 0.3; ctx.strokeStyle = tn.structure;
+    ctx.globalAlpha = 0.3 * open; ctx.strokeStyle = tn.structure;
     ctx.lineWidth = Math.max(1, 0.22 * A.scale);
     ctx.beginPath();
     for (let y = 2.8; y < coreTop; y += 2.8) {
@@ -518,6 +727,49 @@ function glazingBars(A, p) {
   ctx.stroke(); ctx.restore();
 }
 
+/* A section cuts through ONE spectator per row, which is what makes a crowd
+   the best ruler in the building: a seated person is 0.85 m above the seat and
+   the rows are 0.80 m apart, so the stand is measured in people. */
+const occupied = (i, seed) => {
+  let x = (i * 374761393 + seed * 668265263) | 0;
+  x = (x ^ (x >>> 13)) * 1274126177 | 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+};
+
+function crowd(A, p, f) {
+  const { ctx, sx, sy, tn } = A;
+  if (f <= 0) return;
+  const seed = Math.round(Math.abs(p.u0) * 7 + p.y0 * 13);
+  const stepPx = Math.abs(p.rowD * A.scale);
+  const H = 0.85, headR = 0.105;
+  ctx.save();
+  if (stepPx > 5) {
+    ctx.globalAlpha = f * 0.95;
+    for (let i = 0; i < p.rows; i++) {
+      const r = occupied(i, seed);
+      if (r > 0.86) continue;                        // an empty seat
+      const k = (i + 0.5) / p.rows;
+      const u = p.u0 + (p.u1 - p.u0) * k, y = p.y0 + (p.y1 - p.y0) * k + SEAT_BAND;
+      const X = sx(u), Y = sy(y), hpx = Math.abs(sy(y + H) - Y);
+      ctx.fillStyle = r < 0.45 ? tn.prop : tn.seatAlt;
+      ctx.fillRect(X - Math.max(1.5, 0.22 * A.scale), Y - hpx * 0.74,
+                   Math.max(2.8, 0.44 * A.scale), hpx * 0.74);
+      ctx.beginPath(); ctx.arc(X, Y - hpx * 0.86, Math.max(1, headR * A.scale), 0, 7); ctx.fill();
+    }
+  } else if (stepPx > 0.85) {
+    // the same people, too far off to resolve: a stippled band along the rake
+    ctx.globalAlpha = f * 0.85; ctx.fillStyle = tn.prop;
+    const n = Math.min(p.rows, 300);
+    for (let i = 0; i < n; i++) {
+      if (occupied(i, seed) > 0.86) continue;
+      const k = (i + 0.5) / n;
+      const u = p.u0 + (p.u1 - p.u0) * k, y = p.y0 + (p.y1 - p.y0) * k + SEAT_BAND;
+      ctx.fillRect(sx(u) - 0.6, sy(y + H * 0.8), 1.3, Math.max(1.1, H * 0.8 * A.scale));
+    }
+  }
+  ctx.restore();
+}
+
 /** Seats: a continuous band of them at any zoom, resolved into rows up close. */
 function seating(A, p) {
   const { ctx, sx, sy, tn, span } = A;
@@ -528,7 +780,10 @@ function seating(A, p) {
   // a grey wedge tells you nothing about how many people it holds.
   const steps = stepPts(p);
   const up = steps.map((q) => ({ x: sx(q.u), y: sy(q.y + SEAT_BAND) }));
-  poly(ctx, [...up, ...steps.slice().reverse().map((q) => ({ x: sx(q.u), y: sy(q.y) }))], tn.seat);
+  // a rake that climbs away from the sun is in its own shadow
+  const facing = (p.u1 - p.u0) * (SUN_U - p.u0) > 0 ? 1 : -1;
+  poly(ctx, [...up, ...steps.slice().reverse().map((q) => ({ x: sx(q.u), y: sy(q.y) }))],
+       sunward(tn, tn.seat, facing));
 
   if (rowF > 0 && stepPx > 4) {
     ctx.save(); ctx.globalAlpha = rowF;
@@ -543,8 +798,7 @@ function seating(A, p) {
       ctx.lineTo(sx(u + p.s * p.rowD / 2), sy(y + SEAT_BAND)); ctx.stroke();
     }
     ctx.restore();
-    // TODO crowd(A, p, rowF) — never defined, and the call threw on every
-    // 2D render at close zoom. Parked rather than invented.
+    crowd(A, p, rowF);
   } else if (texF > 0 && stepPx > 1.1) {
     ctx.save(); ctx.globalAlpha = 0.65 * texF;
     ctx.strokeStyle = tn.seatAlt; ctx.lineWidth = Math.max(0.8, Math.min(2.4, stepPx * 0.45));
@@ -563,6 +817,13 @@ function seating(A, p) {
 function roofSection(A) {
   const { ctx, sx, sy, tn, span, section } = A;
   const R = section.roof;
+  // Light only reaches what the opening lets it reach. The beams used to be
+  // drawn after the stands with no clip, so they fell straight through ten
+  // metres of solid bank — the most visible lie in the dark theme.
+  const open = R.wings.length === 2
+    ? [Math.min(R.wings[0].inner, R.wings[1].inner), Math.max(R.wings[0].inner, R.wings[1].inner)]
+    : null;
+  A.lightClip = open;
   for (const wing of R.wings) {
     const inner = wing.inner, outer = wing.outerU;
     if (!A.vis(inner, outer)) continue;
@@ -575,12 +836,16 @@ function roofSection(A) {
       { x: sx(inner), y: sy(R.ringBottom) },
     ], tn.roofUnder, tn.metal, 1.2);
     // the top skin, a touch lighter so the slope reads
-    ctx.strokeStyle = tn.roofTop; ctx.lineWidth = Math.max(2, 0.6 * A.scale);
+    ctx.strokeStyle = mixTone(tn.roofTop, tn.sun, 0.3); ctx.lineWidth = Math.max(2.4, 0.7 * A.scale);
     ctx.beginPath(); ctx.moveTo(sx(inner), sy(R.ringTop)); ctx.lineTo(sx(outer), sy(R.outerStructure)); ctx.stroke();
     // the outer fascia blade, whose top is 48 m — the highest thing there is
-    rect(ctx, sx(outer), sy(R.fasciaTop), sx(outer + sgn * 0.9), sy(R.fasciaBottom), tn.roofTop);
+    rect(ctx, sx(outer), sy(R.fasciaTop), sx(outer + sgn * 0.9), sy(R.fasciaBottom),
+         sunward(tn, tn.roofTop, SUN_U - outer > 0 ? 1 : -1));
     // the compression ring, in section
     rect(ctx, sx(inner), sy(R.ringTop), sx(inner + sgn * 2.5), sy(R.ringBottom), tn.metal);
+    // (the shade the roof keeps over the seats is drawn with the decks, where
+    //  there is something to shade — over the open pitch it was a blue pane
+    //  hanging in the air)
     // The cable itself, as the catenary it is, with the hoop cables as nodes
     // on it. Three dots under a beam said nothing about a cable net.
     if (fade(span, D.lod.roofCables) > 0) {
@@ -618,7 +883,14 @@ function roofSection(A) {
         g.addColorStop(0, tn.flood); g.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.globalAlpha = 0.3; ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(lx, ly, 60, 0, 7); ctx.fill();
-        const far = sx(inner - sgn * Math.abs(inner) * 1.9), gy = sy(0);
+        ctx.save();
+        if (A.lightClip) {
+          ctx.beginPath();
+          ctx.rect(Math.min(sx(A.lightClip[0]), sx(A.lightClip[1])), 0,
+                   Math.abs(sx(A.lightClip[1]) - sx(A.lightClip[0])), sy(0) + 1);
+          ctx.clip();
+        }
+        const far = sx(inner - sgn * Math.abs(inner) * 1.55), gy = sy(0);
         const beam = ctx.createLinearGradient(0, ly, 0, gy);
         beam.addColorStop(0, tn.flood);
         beam.addColorStop(0.75, 'rgba(255,238,194,0.35)');
@@ -635,6 +907,7 @@ function roofSection(A) {
         ctx.globalAlpha = 0.5; ctx.fillStyle = pool;
         ctx.fillRect(Math.min(lx, far), gy - Math.max(2.5, 0.6 * A.scale), Math.abs(far - lx), Math.max(2.5, 0.6 * A.scale));
         ctx.globalAlpha = 1;
+        ctx.restore();
       }
     }
   }
@@ -688,6 +961,9 @@ function person(A, p, alpha) {
   ctx.restore();
 }
 
+const CAR_TONES = ['carA', 'carB', 'carC', 'carD', 'carE'];
+const carTone = (tn, v) => tn[CAR_TONES[Math.floor((v || 0) * CAR_TONES.length) % CAR_TONES.length]] || tn.prop;
+
 function car(A, p, alpha) {
   const { ctx, sx, sy, tn } = A;
   const C = D.prop.car, base = p.y || 0;
@@ -696,7 +972,7 @@ function car(A, p, alpha) {
   const X = sx(p.u), Y0 = sy(base), Y1 = sy(base + C.h);
   const wpx = Math.max(2, L * A.scale), hpx = Math.max(1.5, Y0 - Y1);
   footing(A, X, Y0, wpx, alpha);
-  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = tn.prop;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = carTone(tn, p.v);
   if (hpx < 3) { ctx.fillRect(X - wpx / 2, Y1, wpx, hpx); ctx.restore(); return; }
   ctx.beginPath();
   ctx.moveTo(X - wpx / 2, Y0); ctx.lineTo(X - wpx / 2, Y1 + hpx * 0.45);
@@ -704,8 +980,18 @@ function car(A, p, alpha) {
   ctx.lineTo(X + wpx / 2, Y1 + hpx * 0.45); ctx.lineTo(X + wpx / 2, Y0);
   ctx.closePath(); ctx.fill();
   if (wpx > 10) {
-    ctx.fillStyle = tn.structureDark;
+    // glazing, then the wheels: a car is a shape, not a lozenge
+    ctx.fillStyle = TONE_KEY === 'light' ? 'rgba(40,52,64,0.42)' : 'rgba(150,180,210,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(X - wpx * 0.30, Y1 + hpx * 0.42); ctx.lineTo(X - wpx * 0.17, Y1 + hpx * 0.08);
+    ctx.lineTo(X + wpx * 0.14, Y1 + hpx * 0.08); ctx.lineTo(X + wpx * 0.30, Y1 + hpx * 0.42);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a2a2c';
     for (const s of [-0.3, 0.3]) { ctx.beginPath(); ctx.arc(X + s * wpx, Y0 - hpx * 0.12, hpx * 0.17, 0, 7); ctx.fill(); }
+    if (TONE_KEY !== 'light') {
+      ctx.fillStyle = tn.window; ctx.globalAlpha = alpha * 0.9;
+      ctx.fillRect(X + wpx * 0.40, Y0 - hpx * 0.5, wpx * 0.1, hpx * 0.18);
+    }
   }
   ctx.restore();
 }
@@ -737,7 +1023,7 @@ function tree(A, p, alpha, detail, T) {
   ctx.strokeStyle = tn.brick; ctx.lineWidth = Math.max(1, T.trunkR * 2 * A.scale);
   ctx.beginPath(); ctx.moveTo(X, Y0); ctx.lineTo(X, sy(base + hh * 0.42)); ctx.stroke();
   const r = T.canopyR * v * A.scale;
-  ctx.fillStyle = tn.park;
+  ctx.fillStyle = (p.v || 0) > 0.72 ? tn.parkAlt : tn.park;
   if (detail > 0 && r > 8) {
     for (const [dx, dy, k] of [[0, 0, 1], [-0.55, 0.3, 0.68], [0.55, 0.28, 0.66], [0, -0.45, 0.6]]) {
       ctx.beginPath(); ctx.arc(X + dx * r, sy(base + hh * 0.72) + dy * r, r * k, 0, 7); ctx.fill();
@@ -833,10 +1119,13 @@ const line = (ctx, x0, x1, y) => {
 /* ── readability chrome ─────────────────────────────────────────────── */
 
 /** A bar whose length is a round number of metres. */
+const BAR_STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
 export function scaleBar(A, x, y) {
   const { ctx, tn } = A;
-  const want = 150 / A.scale;                           // aim for ~150 px
-  const step = niceStep(want * 2, 2);
+  // The largest round number that still FITS. Rounding to a nice step and
+  // hoping was how a 5 m bar came to be 256 px long and off the canvas.
+  let step = BAR_STEPS[0];
+  for (const c of BAR_STEPS) { if (c * A.scale <= 175) step = c; }
   const px = step * A.scale;
   ctx.save();
   ctx.strokeStyle = cssVar('--ink-strong', tn.prop); ctx.lineWidth = 2;
@@ -850,9 +1139,11 @@ export function scaleBar(A, x, y) {
 }
 
 /** Heights up the left edge, labelled against things you can see. */
-export function heightRuler(A, L) {
+export function heightRuler(A, L, contentTop = Infinity) {
   const { ctx, h, sy, tn } = A;
-  const top = A.py(0), bottom = A.py(h);
+  // Graduating to 300 m for a world 48 m tall is a ruler measuring the sky.
+  const top = Math.min(A.py(0), Math.max(contentTop * 1.12, 12));
+  const bottom = A.py(h);
   const step = niceStep(top - bottom, 6);
   const X = 54;
   const lo = Math.max(0, Math.floor(bottom / step) * step);

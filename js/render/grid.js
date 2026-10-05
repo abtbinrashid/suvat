@@ -59,7 +59,13 @@ const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
 const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
 const norm = (a) => { const L = Math.hypot(a.x, a.y, a.z) || 1; return { x: a.x / L, y: a.y / L, z: a.z / L }; };
-const NEAR = 0.4;
+// A near plane of 0.4 m divides by 0.4 and multiplies screen coordinates by
+// ~1900, flinging a clipped vertex thousands of pixels off-canvas — and a
+// polygon that spans the whole canvas is a polygon no bounding-box reject can
+// catch. One metre, plus a guard band on the projected result, keeps a quad
+// that straddles the camera from smearing across the frame.
+const NEAR = 1.0;
+const GUARD = 12000;
 
 export function makeView3D(cam, w, h) {
   const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
@@ -74,7 +80,9 @@ export function makeView3D(cam, w, h) {
   const f = (h / 2) / Math.tan((cam.fov * Math.PI) / 360);
 
   const toCam = (p) => { const r = sub(p, eye); return { x: dot(r, right), y: dot(r, up), z: dot(r, fwd) }; };
-  const proj = (c) => ({ x: w / 2 + (f * c.x) / c.z, y: h / 2 - (f * c.y) / c.z, z: c.z });
+  const clampG = (v, mid) => (v > mid + GUARD ? mid + GUARD : v < mid - GUARD ? mid - GUARD : v);
+  const proj = (c) => ({ x: clampG(w / 2 + (f * c.x) / c.z, w / 2),
+                         y: clampG(h / 2 - (f * c.y) / c.z, h / 2), z: c.z });
   const point = (p) => { const c = toCam(p); return c.z < NEAR ? null : proj(c); };
   const segment = (a, b) => {
     let ca = toCam(a), cb = toCam(b);

@@ -71,10 +71,21 @@ export function stroke(ctx, pts, { color, width = 2, dash = null, alpha = 1 } = 
   ctx.stroke(); ctx.restore();
 }
 
-export function arrow(ctx, x0, y0, x1, y1, { color, width = 2.4, head = 11, dash = null }) {
+export function arrow(ctx, x0, y0, x1, y1, { color, width = 2.4, head = 11, dash = null, casing = true }) {
   const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
   if (len < 2) return;
   const ux = dx / len, uy = dy / len, hl = Math.min(head, len * 0.5);
+  // A casing in the surface colour. An arrow crosses sky, lit grass, dark
+  // seating and bare concrete in one stroke; there is always some background
+  // it nearly matches, and the arrow is not allowed to lose.
+  if (casing) {
+    ctx.save();
+    ctx.strokeStyle = cssVar('--surface', '#131210');
+    ctx.globalAlpha = 0.55; ctx.lineWidth = width + 3.4; ctx.lineCap = 'round';
+    ctx.lineJoin = 'round'; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.restore();
+  }
   ctx.save();
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'butt';
   ctx.setLineDash(dash || []);

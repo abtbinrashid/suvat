@@ -66,7 +66,7 @@ function build() {
   const PR = (type, x, z, rot = 0, extra) => props.push({ type, x, z, rot, ...extra });
 
   /* ── the district floor, outward in ───────────────────────────────── */
-  const FAR = 9000;
+  const FAR = 26000;
   G(-FAR, FAR, -FAR, FAR, 0, 'ground', 'district');
 
   for (const p of D.parks) {
@@ -95,21 +95,32 @@ function build() {
     const along = t.along;                            // houses run along this axis
     const per = along === 'x' ? t.z : t.x;            // modules stack across it
     const run = along === 'x' ? t.x : t.z;
-    G(t.x[0], t.x[1], t.z[0], t.z[1], 0, 'paving', 'streets');
+    G(t.x[0], t.x[1], t.z[0], t.z[1], 0, 'terrain', 'back gardens');
     for (let m = 0; (m + 1) * MOD <= per[1] - per[0] + 1e-6; m++) {
       const base = per[0] + m * MOD;
       const street = [base, base + H.street];
       const a = [base + H.street, base + H.street + H.depth];
       const b = [base + MOD - H.depth, base + MOD];
+      // Terraces run in BLOCKS with cross streets between them. One unbroken
+      // six-hundred-metre ridge reads as a runway, not as houses.
+      const BLOCK = 88, CROSS = 11;
+      const segs = [];
+      for (let v = run[0]; v < run[1] - 12; v += BLOCK + CROSS) {
+        segs.push([v, Math.min(v + BLOCK, run[1])]);
+      }
       if (along === 'x') {
         G(t.x[0], t.x[1], street[0], street[1], 0, 'asphalt', 'street');
-        rowsOfHouses.push({ along, run, perp: a, face: +1, seed: m * 3 + 1 });
-        rowsOfHouses.push({ along, run, perp: b, face: -1, seed: m * 3 + 2 });
+        for (let v = run[0] + BLOCK; v < run[1]; v += BLOCK + CROSS)
+          G(v, Math.min(v + CROSS, run[1]), base, base + MOD, 0, 'asphalt', 'cross street');
       } else {
         G(street[0], street[1], t.z[0], t.z[1], 0, 'asphalt', 'street');
-        rowsOfHouses.push({ along, run, perp: a, face: +1, seed: m * 3 + 1 });
-        rowsOfHouses.push({ along, run, perp: b, face: -1, seed: m * 3 + 2 });
+        for (let v = run[0] + BLOCK; v < run[1]; v += BLOCK + CROSS)
+          G(base, base + MOD, v, Math.min(v + CROSS, run[1]), 0, 'asphalt', 'cross street');
       }
+      segs.forEach((seg, k) => {
+        rowsOfHouses.push({ along, run: seg, perp: a, face: +1, seed: m * 97 + k * 3 + 1 });
+        rowsOfHouses.push({ along, run: seg, perp: b, face: -1, seed: m * 97 + k * 3 + 2 });
+      });
     }
   }
   for (const r of rowsOfHouses) {
@@ -167,7 +178,7 @@ function build() {
   }
   for (let x = RX[0]; x <= RX[1]; x += R.lampEvery) PR('lamp', x, R.median[0] + 1.2, 0, { h: R.lampH });
   for (let x = RX[0]; x <= RX[1]; x += R.treeEvery) {
-    if (Math.abs(x) < 70) continue;
+    if (Math.abs(x) < 26) continue;              // the station entrance stays clear
     PR('tree', x + jitter(x, 0, 31, 2), (R.pavementWide[0] + R.pavementWide[1]) / 2 - 3.5, 0, { v: h2(x, 1, 37) });
   }
   // traffic: parked and moving, laid out so the 4.5 m car and the 4.4 m bus
@@ -381,6 +392,24 @@ export function slice({ axis, at, dir = 1, band = 9 }) {
   }
   near.sort((a, b) => b.off - a.off);                     // far from the plane first
 
+  // Things the plane misses but that stand just beyond it — the hoardings
+  // running parallel to the cut, the goal frame, a bench — drawn lighter and
+  // behind. A pure zero-thickness cut is honest and almost empty; "beyond the
+  // cut, lighter" is how every building section has handled this for a century.
+  const BEYOND = 46;
+  const behind = [];
+  for (const sld of W.solids) {
+    const p0 = sld[perpAxis + '0'], p1 = sld[perpAxis + '1'];
+    if (at >= Math.min(p0, p1) && at <= Math.max(p0, p1)) continue;   // already cut
+    const off = Math.min(Math.abs(at - p0), Math.abs(at - p1));
+    if (off > BEYOND) continue;
+    const a = U(sld[axis + '0']), b = U(sld[axis + '1']);
+    behind.push({ u0: Math.min(a, b), u1: Math.max(a, b), y0: sld.y0, y1: sld.y1,
+                  tone: sld.tone, tag: sld.tag, ridge: sld.ridge, eaves: sld.eaves,
+                  off: off / BEYOND });
+  }
+  behind.sort((a, b) => b.off - a.off);
+
   /* the bowl sides this cut actually crosses, as (u,y) profiles */
   const decks = [];
   for (const s of W.sides) {
@@ -399,15 +428,16 @@ export function slice({ axis, at, dir = 1, band = 9 }) {
                             axis === 'x' ? bw.frontW + bw.depth : bw.frontL + bw.depth,
                             bw.frontR + bw.depth, at);
   const ringHalf = (() => {
-    const a = axis === 'x' ? R.ringA : R.ringB, b = axis === 'x' ? R.ringB : R.ringA;
-    if (Math.abs(at) >= b) return 0;                      // the cut misses the opening
-    return a * Math.sqrt(1 - (at / b) ** 2);
+    const k = bw.frontR - R.ringInset;
+    const a = (axis === 'x' ? bw.frontL : bw.frontW) - R.ringInset;
+    const b = (axis === 'x' ? bw.frontW : bw.frontL) - R.ringInset;
+    return roundedHalf(a, b, k, at) || 0;                 // the cut may miss the opening
   })();
   const wings = outer == null ? [] : [-1, 1].map((sgn) => ({
     inner: U(sgn * ringHalf), outerU: U(sgn * outer), open: ringHalf > 0,
   }));
 
-  return { axis, at, dir, band, surfaces, blocks, marks, props: near, decks,
+  return { axis, at, dir, band, surfaces, blocks, behind, marks, props: near, decks,
            roof: { wings, ...R }, dims: D };
 }
 

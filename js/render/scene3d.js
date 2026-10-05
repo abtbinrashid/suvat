@@ -42,6 +42,7 @@ export function render(canvas, cam3, o) {
     // as well, so a camera outside the stadium and low sees nothing but a lid;
     // the default has to clear the rim on the way in.
     cam3.pitch = 0.62;
+    snap3(cam3);                          // a fit arrives, it does not travel
   }
 
   clearOfRoof(cam3);
@@ -52,17 +53,21 @@ export function render(canvas, cam3, o) {
   const W = (p) => toWorld(p.x, p.y);
 
   /* ── the world ────────────────────────────────────────────────────── */
-  sky3D(ctx, w, h, tn);
-  const detail = !moving || performance.now() - movedAt > 220;
-  const key = [w, h, document.documentElement.dataset.theme,
+  sky3D(ctx, V, w, h, tn);
+  const detail = !moving && performance.now() - movedAt > 200;
+  const key = [w, h, document.documentElement.dataset.theme, show.xray === false ? 'solid' : 'xray',
                cam3.yaw.toFixed(3), cam3.pitch.toFixed(3), cam3.dist.toFixed(2),
                cam3.target.x.toFixed(1), cam3.target.y.toFixed(1), cam3.target.z.toFixed(1),
                detail ? 'hi' : 'lo'].join('|');
   const bg = layer('scenery3d', w, h, key, (g) => {
     g.clearRect(0, 0, w, h);
-    drawScenery3D(g, V, { w, h, span, detail });
+    // Anything closer than this goes glassy, so the stand between the camera
+    // and the pitch stops being a wall without ceasing to be a stand.
+    // Anything between the eye and what it is looking AT goes glassy — which
+    // is the whole trick: the near stand stays a stand and stops being a wall.
+    const xray = show.xray === false ? 0 : Math.max(12, cam3.dist * 0.70);
+    drawScenery3D(g, V, { w, h, span, detail, xray });
     farRings3D(g, V, tn, span);
-    horizonHaze(g, V, w, h, tn);
   });
   ctx.drawImage(bg, 0, 0, w, h);
 
@@ -195,9 +200,9 @@ export function render(canvas, cam3, o) {
   groundScaleBar(ctx, V, L, P);
   heightLadder(ctx, V, L, P, toWorld, Math.max(f.apexHeight, f.params.h), deckUnder(site));
   L.add(`${BAND_LABEL[zoomBand(span)]} · looking ${bearingName(cam3.yaw)} · eye ${fmt(V.eye.y, 0)} m up · 1 unit = 1 m`,
-        18, h - 32, { color: P.muted, pri: 11, size: 13, bg: false });
+        18, h - 32, { color: P.strong, pri: 11, size: 13 });
   L.add('drag to orbit · scroll to zoom · double-click to refit', w - 12, h - 14,
-        { color: P.faint, align: 'right', pri: 4, size: 13, bg: false });
+        { color: P.muted, align: 'right', pri: 4, size: 13 });
   L.draw(ctx, w, h);
   cam3._V = V; cam3._W = W; cam3._ball = p ? { x: p.x, y: p.y } : null;
 }
@@ -264,14 +269,17 @@ function groundScaleBar(ctx, V, L, P) {
     if (!b) continue;
     const px = Math.hypot(b.x - a.x, b.y - a.y);
     if (px < 60 || px > 460) continue;
-    stroke(ctx, [a, b], { color: cssVar('--ink-strong', '#888'), width: 2.4 });
+    // Chrome, not physics: it has to be findable and it must not be the
+    // heaviest mark in the frame, which at 2.4 px of --ink-strong it was.
+    const col = cssVar('--ink-muted', '#888');
+    stroke(ctx, [a, b], { color: col, width: 1.6 });
     for (const q of [a, b]) {
       const n = { x: -(b.y - a.y) / px, y: (b.x - a.x) / px };
-      stroke(ctx, [{ x: q.x - n.x * 6, y: q.y - n.y * 6 }, { x: q.x + n.x * 6, y: q.y + n.y * 6 }],
-             { color: cssVar('--ink-strong', '#888'), width: 2.4 });
+      stroke(ctx, [{ x: q.x - n.x * 5, y: q.y - n.y * 5 }, { x: q.x + n.x * 5, y: q.y + n.y * 5 }],
+             { color: col, width: 1.6 });
     }
-    L.add(`${len} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 + 15,
-          { color: P.strong, align: 'center', pri: 11, size: 13 });
+    L.add(`${len} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 + 14,
+          { color: P.muted, align: 'center', pri: 3, size: 13 });
     return;
   }
 }
@@ -314,15 +322,66 @@ function clearOfRoof(cam3) {
     const qz = Math.max(Math.abs(e.z) - (B.halfW - B.cornerR), 0);
     if (Math.hypot(qx, qz) + Math.min(Math.max(qx, qz), 0) - B.cornerR > 2) return;
     // inside the opening, where there is no roof?
-    if ((e.x / R.ringA) ** 2 + (e.z / R.ringB) ** 2 < 0.94) return;
+    const ox = Math.max(Math.abs(e.x) - (D.bowl.frontL - R.ringInset - (D.bowl.frontR - R.ringInset)), 0);
+    const oz = Math.max(Math.abs(e.z) - (D.bowl.frontW - R.ringInset - (D.bowl.frontR - R.ringInset)), 0);
+    if (Math.hypot(ox, oz) + Math.min(Math.max(ox, oz), 0) - (D.bowl.frontR - R.ringInset) < -1) return;
     cam3.pitch = clamp(cam3.pitch + 0.045, 0.02, 1.45);
   }
 }
 
-function sky3D(ctx, w, h, tn) {
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, tn.skyTop); g.addColorStop(1, tn.skyBottom);
+/* The sky, with the sun actually in it. The horizon is where the ground
+   plane vanishes, so the warm band is pinned to that rather than to the
+   bottom of the canvas — tilt the camera and the sunset stays put. */
+function sky3D(ctx, V, w, h, tn) {
+  const far = V.point({ x: V.eye.x + V.fwd.x * 90000, y: 0, z: V.eye.z + V.fwd.z * 90000 });
+  const hz = clamp(far ? far.y : h * 0.4, -h, h * 2);
+  const g = ctx.createLinearGradient(0, Math.min(0, hz - h), 0, hz);
+  g.addColorStop(0, tn.skyTop);
+  g.addColorStop(0.78, tn.skyMid);
+  g.addColorStop(1, tn.skyBottom);
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+
+  // the sun itself, placed in the world to the west and low
+  const sun = V.point({ x: -9000, y: 2600, z: 1800 });
+  const dark = (document.documentElement.dataset.theme || 'dark') !== 'light';
+  if (!dark && sun && sun.x > -w && sun.x < w * 2) {
+    const r = Math.max(w, h);
+    const glow = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, r);
+    glow.addColorStop(0, tn.sunGlow);
+    glow.addColorStop(0.3, 'rgba(255,206,138,0.16)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save(); ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h); ctx.restore();
+    ctx.save(); ctx.fillStyle = tn.sun; ctx.globalAlpha = 0.95;
+    ctx.beginPath(); ctx.arc(sun.x, sun.y, 16, 0, 7); ctx.fill(); ctx.restore();
+  }
+  // The ground, all the way to the horizon. A finite plane has an edge, and
+  // from 350 m up you can see it; painting the far ground behind everything
+  // means the edge has the same colour on both sides and disappears.
+  if (hz < h) {
+    ctx.save();
+    ctx.fillStyle = tn.terrain;
+    ctx.fillRect(0, Math.max(0, hz), w, h - Math.max(0, hz));
+    const band = ctx.createLinearGradient(0, hz - 46, 0, hz + 26);
+    band.addColorStop(0, 'rgba(0,0,0,0)');
+    band.addColorStop(0.55, tn.haze);
+    band.addColorStop(1, tn.haze);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = band;
+    ctx.fillRect(0, hz - 46, w, 72);
+    ctx.restore();
+  }
+
+  // cloud banks, far enough out to read as sky rather than as geometry
+  ctx.save();
+  ctx.fillStyle = dark ? 'rgba(140,165,205,0.06)' : 'rgba(255,255,255,0.38)';
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    const c = V.point({ x: Math.cos(a) * 7000, y: 900 + ((i * 53) % 7) * 120, z: Math.sin(a) * 7000 });
+    if (!c || c.x < -400 || c.x > w + 400 || c.y > hz) continue;
+    ctx.globalAlpha = 0.55 + ((i * 17) % 5) / 12;
+    ctx.beginPath(); ctx.ellipse(c.x, c.y, 150, 22, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.x + 60, c.y - 16, 85, 18, 0, 0, 7); ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** The optional metre grid, laid on the ground in the plane of the flight. */
@@ -394,6 +453,7 @@ export function attachControls3D(canvas, cam3, onChange, getScene, onResolve = {
     moving = true; movedAt = performance.now(); cam3.touched = true;
     cam3.yaw += (e.clientX - lx) * 0.008;
     cam3.pitch = clamp(cam3.pitch - (e.clientY - ly) * 0.006, 0.02, 1.45);
+    snap3(cam3);                          // a drag is direct: no easing
     lx = e.clientX; ly = e.clientY; onChange();
   });
   const end = (e, clicked) => {
@@ -411,10 +471,13 @@ export function attachControls3D(canvas, cam3, onChange, getScene, onResolve = {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     moving = true; movedAt = performance.now(); cam3.touched = true;
-    cam3.dist = clamp(cam3.dist * Math.exp(e.deltaY * 0.0012), 8, 6000);
+    const base = cam3.want?.dist ?? cam3.dist;
+    cam3.want = { ...(cam3.want || {}), dist: clamp(base * Math.exp(e.deltaY * 0.0014), 8, 6000),
+                  yaw: cam3.want?.yaw ?? cam3.yaw, pitch: cam3.want?.pitch ?? cam3.pitch,
+                  target: cam3.want?.target ?? { ...cam3.target } };
     onChange();
     clearTimeout(attachControls3D._t);
-    attachControls3D._t = setTimeout(() => { moving = false; onChange(); }, 180);
+    attachControls3D._t = setTimeout(() => { moving = false; onChange(); }, 240);
   }, { passive: false });
   canvas.addEventListener('dblclick', () => { cam3.fit = true; cam3.touched = false; onChange(); });
 }
@@ -447,10 +510,10 @@ export const VIEWS = {
   // a vertical stick, which is the one thing this view must not do.
   // Eye over the south run-off, 36 m up, inside the roof opening: the one
   // place a camera can sit on the touchline side and still see sky.
-  touchline: { yaw: 2.01, pitch: 0.30, dist: 104, target: { x: 0, y: 22, z: -16 } },
+  touchline: { yaw: 1.995, pitch: 0.110, dist: 73, target: { x: 0, y: 26, z: -26 } },
   // Behind the west goal, up in the single steep tier, again off-axis.
   // Behind the west goal, over the run-off and inside the opening.
-  goal:      { yaw: 3.00, pitch: 0.28, dist: 108, target: { x: 14, y: 18, z: 0 } },
+  goal:      { yaw: 2.967, pitch: 0.115, dist: 70, target: { x: 10, y: 24, z: 0 } },
   // High and oblique: straight down through the opening shows only a lid.
   aerial:    { yaw: 2.35, pitch: 0.86, dist: 300, target: { x: 0, y: 8, z: 0 } },
   // Far enough out for the district, close enough for the bowl to read.
@@ -458,11 +521,54 @@ export const VIEWS = {
 };
 export function setView(cam3, name, site) {
   const v = VIEWS[name]; if (!v) return;
-  Object.assign(cam3, { yaw: v.yaw, pitch: v.pitch, dist: v.dist,
-                        target: { ...v.target }, fit: false, touched: true });
+  const target = { ...v.target };
   // keep the flight in frame: nudge the target towards where it happens
   if (site && name !== 'district') {
-    cam3.target.x = cam3.target.x * 0.6 + site.origin.x * 0.4;
-    cam3.target.z = cam3.target.z * 0.6 + site.origin.z * 0.4;
+    target.x = target.x * 0.6 + site.origin.x * 0.4;
+    target.z = target.z * 0.6 + site.origin.z * 0.4;
   }
+  cam3.fit = false; cam3.touched = true;
+  // the camera FLIES there: a cut between two viewpoints loses you, a move
+  // between them tells you how they relate
+  cam3.want = { yaw: nearestYaw(cam3.yaw, v.yaw), pitch: v.pitch, dist: v.dist, target };
 }
+
+/** Take the short way round. 350° to 10° is 20°, not 340°. */
+function nearestYaw(from, to) {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return from + d;
+}
+
+/* ── moving the camera, rather than teleporting it ─────────────────────
+   Distance eases in LOG space because zoom is multiplicative; angles and the
+   look-at point ease linearly. Dragging stays immediate — lag in a direct
+   manipulation feels like a fault, not like smoothing. */
+export function easeCamera3D(cam3, dt) {
+  if (!cam3.want) return false;
+  const k = 1 - Math.exp(-dt * 7.5);
+  const W = cam3.want;
+  let moving = false;
+  if (W.dist != null) {
+    const r = Math.log(W.dist / cam3.dist);
+    if (Math.abs(r) > 0.0008) { cam3.dist *= Math.exp(r * k); moving = true; } else cam3.dist = W.dist;
+  }
+  for (const key of ['yaw', 'pitch']) {
+    if (W[key] == null) continue;
+    const d = W[key] - cam3[key];
+    if (Math.abs(d) > 0.0012) { cam3[key] += d * k; moving = true; } else cam3[key] = W[key];
+  }
+  if (W.target) {
+    for (const key of ['x', 'y', 'z']) {
+      const d = W.target[key] - cam3.target[key];
+      if (Math.abs(d) > 0.05) { cam3.target[key] += d * k; moving = true; } else cam3.target[key] = W.target[key];
+    }
+  }
+  // A travelling camera invalidates the scenery cache on every frame, so a
+  // full-detail repaint would make the smooth move the jerkiest thing in the
+  // app. While it travels it travels cheap; the moment it stops, it sharpens.
+  if (moving) movedAt = performance.now();
+  return moving;
+}
+const snap3 = (c) => { c.want = { yaw: c.yaw, pitch: c.pitch, dist: c.dist, target: { ...c.target } }; };

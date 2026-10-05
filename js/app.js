@@ -37,6 +37,7 @@ const SHOWS = [
   { key: 'range',        label: 'Horizontal displacement' },
   { key: 'grid',         label: 'Metre grid' },
   { key: 'ruler',        label: 'Height ruler' },
+  { key: 'xray',         label: 'See through the near stand (3D)' },
 ];
 const EXTRAS = [
   { key: 'graphs',  label: 'Graphs against time' },
@@ -50,7 +51,7 @@ const state = {
   bounce: false, restitution: 0.7,
   dim: '2d', t: 0, playing: false, launched: false, firedBefore: false,
   rate: 1,
-  show: { path: true, velocity: true, apex: true, range: true, grid: false, ruler: true,
+  show: { path: true, velocity: true, apex: true, range: true, grid: false, ruler: true, xray: true,
           components: false, ticks: false, acceleration: false },
   extras: { graphs: false, working: false, energy: false },
   options: false,
@@ -451,6 +452,12 @@ function frame(now) {
     }
     dirty = true;
   }
+  // the camera travels rather than teleporting; while it is moving, so is
+  // the frame
+  if (state.step === 'flight') {
+    if (state.dim === '3d') { if (scene3d.easeCamera3D(cam3, dt)) dirty = true; }
+    else if (scene.easeCamera(cam, dt)) dirty = true;
+  }
   if (dirty) draw();
   requestAnimationFrame(frame);
 }
@@ -515,7 +522,15 @@ for (const b of $('dim-seg').children) {
     state.dim = b.dataset.dim;
     for (const x of $('dim-seg').children) x.setAttribute('aria-pressed', String(x === b));
     $('view-seg').hidden = state.dim !== '3d';
+    $('band-seg').hidden = state.dim === '3d';   // zoom bands are the 2D camera
     cam.fit = true; cam3.fit = true; dirty = true;
+  });
+}
+for (const b of $('band-seg').children) {
+  b.addEventListener('click', () => {
+    scene.setBand(cam, b.dataset.band);
+    for (const x of $('band-seg').children) x.setAttribute('aria-pressed', String(x === b));
+    dirty = true;
   });
 }
 for (const b of $('view-seg').children) {

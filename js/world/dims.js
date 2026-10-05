@@ -60,8 +60,8 @@ export const D = {
   // generated from that identical offset: when the two were generated from
   // different rounded rectangles, the corners did not meet and you could see
   // the district through the gap.
-  bowl: { halfL: 125, halfW: 105, cornerR: 93, outerWallH: 36,
-          frontL: 62, frontW: 42, frontR: 30, depth: 63 },
+  bowl: { halfL: 125, halfW: 105, cornerR: 83, outerWallH: 36,
+          frontL: 62, frontW: 42, frontR: 20, depth: 63 },
 
   // A side is a list of elements, each measured as an OUTWARD distance d from
   // that side's front line. `tier` elements are generated row by row.
@@ -76,8 +76,8 @@ export const D = {
         { t: 'rail',  d0: 20.2, d1: 20.2, y0: 10.0,  y1: 11.1,  name: 'parapet' },
         { t: 'glassWall', d0: 20.2, d1: 20.5, y0: 10.0, y1: 14.0, name: 'box glazing' },
         { t: 'deck',  d0: 20.5, d1: 30.0, y0: 14.0,  y1: 14.0,  name: 'boxes, roof deck' },
-        { t: 'tier',  d0: 30.0, d1: 36.4, y0: 14.0,  y1: 17.44, rows: 8,  rowD: 0.80, rise: 0.43, name: 'middle tier' },
-        { t: 'wall',  d0: 36.4, d1: 38.0, y0: 17.44, y1: 25.0,  name: 'middle rear' },
+        { t: 'tier',  d0: 30.0, d1: 34.8, y0: 14.0,  y1: 16.58, rows: 6,  rowD: 0.80, rise: 0.43, name: 'middle tier' },
+        { t: 'wall',  d0: 34.8, d1: 36.0, y0: 16.58, y1: 25.0,  name: 'middle rear' },
         { t: 'tier',  d0: 36.0, d1: 53.6, y0: 25.0,  y1: 34.9,  rows: 22, rowD: 0.80, rise: 0.45, name: 'upper tier' },
         { t: 'wall',  d0: 53.6, d1: 63.0, y0: 34.9,  y1: 36.0,  name: 'rear facade' },
       ],
@@ -102,9 +102,9 @@ export const D = {
         { t: 'glassWall', d0: 18.5, d1: 18.8, y0: 9.2, y1: 13.0, name: 'box glazing' },
         { t: 'deck',  d0: 18.8, d1: 27.0, y0: 13.0,  y1: 13.0,  name: 'boxes, roof deck' },
         { t: 'tier',  d0: 27.0, d1: 35.0, y0: 13.0,  y1: 17.2,  rows: 10, rowD: 0.80, rise: 0.42, name: 'tier 2' },
-        { t: 'wall',  d0: 35.0, d1: 36.5, y0: 17.2,  y1: 21.5,  name: 'tier 2 rear' },
+        { t: 'wall',  d0: 35.0, d1: 36.0, y0: 17.2,  y1: 21.5,  name: 'tier 2 rear' },
         { t: 'tier',  d0: 36.0, d1: 45.6, y0: 21.5,  y1: 26.78, rows: 12, rowD: 0.80, rise: 0.44, name: 'tier 3' },
-        { t: 'wall',  d0: 45.6, d1: 47.0, y0: 26.78, y1: 30.0,  name: 'tier 3 rear' },
+        { t: 'wall',  d0: 45.6, d1: 46.5, y0: 26.78, y1: 30.0,  name: 'tier 3 rear' },
         { t: 'tier',  d0: 46.5, d1: 54.5, y0: 30.0,  y1: 34.6,  rows: 10, rowD: 0.80, rise: 0.46, name: 'tier 4, gallery' },
         { t: 'wall',  d0: 54.5, d1: 63.0, y0: 34.6,  y1: 35.6,  name: 'rear facade' },
       ],
@@ -118,7 +118,11 @@ export const D = {
   roof: {
     fasciaTop: 48.0, fasciaBottom: 43.0,    // the outer rim
     outerStructure: 46.5,                   // where the roof plane meets the rim
-    ringA: 64, ringB: 41,                   // inner opening, semi-axes (128 × 82)
+    // The opening is the front row's own plan, pulled IN by 2 m — so every
+    // seat is covered and the whole playing surface is open, by construction.
+    // An ellipse could not do both: a 64 × 41 ellipse covered nine metres of
+    // each pitch corner while leaving the end seats open to the sky.
+    ringInset: 2,                           // opening = 60 × 40, corner r 18
     ringTop: 44.0, ringBottom: 42.5,
     lightStripY: 42.0, lightStripW: 1.2,
     radialCables: 28, hoopCables: 3,
@@ -156,6 +160,10 @@ export const D = {
     { id: 'P1', x: [-210, -70], z: [150, 230], along: 'x' },
     { id: 'P2', x: [80, 215],   z: [150, 215], along: 'x' },
     { id: 'P3', x: [-450, -340], z: [-150, 150], along: 'z' },
+    // P4 straddles x = 0 so the across-the-pitch section has a car park in
+    // it. Seven of the nine scenarios cut that way; without this the whole
+    // district band was one park and one terrace for most of the app.
+    { id: 'P4', x: [-62, 62],   z: [152, 232], along: 'x' },
   ],
 
   house: { front: 5.5, depth: 9.0, eaves: 6.2, ridge: 9.4, garden: 10, street: 10 },
@@ -191,7 +199,7 @@ export const D = {
      over the last quarter, so nothing ever pops. */
   lod: {
     bands: { pitch: 30, stadium: 300, district: 2000 },
-    netMesh: 260, grassBlades: 24, people: 230, boardPanels: 260,
+    netMesh: 260, grassBlades: 24, people: 460, boardPanels: 260,
     pitchLines: 900, players: 340, seatRows: 130, seatTexture: 440,
     roofCables: 950, floodDetail: 760, carParkBays: 950, cars: 1900,
     treeDetail: 1200, treeBlob: 3400, houseDetail: 1500, houseBlock: 4200,

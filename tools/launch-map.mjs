@@ -6,7 +6,7 @@
 //
 //   node tools/launch-map.mjs > design/launch-map.svg
 
-import { D } from '../js/world/dims.js';
+import { D, rake } from '../js/world/dims.js';
 import { SITES, roundedRect } from '../js/world/world.js';
 import { SCENARIOS } from '../js/scenarios.js';
 import { flight } from '../js/core/projectile.js';
@@ -82,11 +82,15 @@ put(`<style>
 </style>`);
 put(`<rect width="100%" height="100%" fill="#f1efea"/>`);
 put(`<defs>
- <marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#c2410c"/></marker>
- <marker id="az" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0e7490"/></marker>
+ <marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4c5a3f"/></marker>
+ <marker id="az" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4a4660"/></marker>
 </defs>`);
 put(`<text class="t" x="40" y="46">Where every scenario launches from</text>`);
-put(`<text class="s" x="40" y="68">One world, thirteen situations. Plan, north up, 1 unit = 1 metre. Every arrow is the flight the engine actually computes from that scenario's own numbers.</text>`);
+const COUNT = SCENARIOS.filter((x) => SITES[x.id]).length;
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+               'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen'];
+const spell = (n) => WORDS[n] || String(n);
+put(`<text class="s" x="40" y="68">One world, ${spell(COUNT)} situations. Plan, north up, 1 unit = 1 metre. Every arrow is the flight the engine actually computes from that scenario's own numbers.</text>`);
 
 /* ── panel A: the stadium ───────────────────────────────────────────── */
 const A = panel({ cx: 0, cy: -6, px: 40, py: 92, pw: 880, ph: 760, ext: 146, detail: true });
@@ -95,25 +99,32 @@ put(`<text class="h" x="40" y="${92 - 10}">1 · The stadium</text>`);
 /* ── panel B: the district ──────────────────────────────────────────── */
 const Bp = panel({ cx: 0, cy: -60, px: 948, py: 92, pw: 572, ph: 420, ext: 760, detail: false });
 put(`<text class="h" x="948" y="${92 - 10}">2 · The district, out to 1.5 km</text>`);
-put(`<rect x="${Bp.X(-170).toFixed(1)}" y="${Bp.Z(-170).toFixed(1)}" width="${(340 * Bp.S).toFixed(1)}" height="${(340 * Bp.S).toFixed(1)}" fill="none" stroke="#c2410c" stroke-width="1.6" stroke-dasharray="5 4"/>`);
-put(`<text class="l" x="${Bp.X(0).toFixed(1)}" y="${(Bp.Z(170) + 16).toFixed(1)}" text-anchor="middle" fill="#c2410c">panel 1</text>`);
-put(`<text class="l" x="${Bp.X(0).toFixed(1)}" y="${(Bp.Z(-245)).toFixed(1)}" text-anchor="middle">rail station, 210 m out</text>`);
-put(`<text class="l" x="${Bp.X(-430).toFixed(1)}" y="${(Bp.Z(-168)).toFixed(1)}" text-anchor="middle">main road</text>`);
+// panel 1's real extent: 880 × 760 px at A.S px/m, centred on (0, −6)
+const AEX = 880 / A.S / 2, AEZ = 760 / A.S / 2, ACZ = -6;
+put(`<rect x="${Bp.X(-AEX).toFixed(1)}" y="${Bp.Z(ACZ - AEZ).toFixed(1)}" width="${(AEX * 2 * Bp.S).toFixed(1)}" height="${(AEZ * 2 * Bp.S).toFixed(1)}" fill="none" stroke="#1a1714" stroke-width="1.4" stroke-dasharray="5 4"/>`);
+put(`<text class="l" x="${Bp.X(0).toFixed(1)}" y="${(Bp.Z(ACZ + AEZ) + 15).toFixed(1)}" text-anchor="middle">panel 1</text>`);
+put(`<text class="l" x="${Bp.X(D.station.x[1] + 86).toFixed(1)}" y="${(Bp.Z((D.station.z[0] + D.station.z[1]) / 2)).toFixed(1)}" text-anchor="middle">rail station, ${D.station.distanceFromCentre} m out</text>`);
+put(`<text class="l" x="${Bp.X(-480).toFixed(1)}" y="${(Bp.Z((D.road.carriagewayA[0] + D.road.carriagewayB[1]) / 2 - 12)).toFixed(1)}" text-anchor="middle">main road</text>`);
 put(`<text class="l" x="${Bp.X(-660).toFixed(1)}" y="${(Bp.Z(0)).toFixed(1)}" text-anchor="middle">park</text>`);
-put(`<text class="l" x="${Bp.X(-330).toFixed(1)}" y="${(Bp.Z(195)).toFixed(1)}" text-anchor="middle">car park</text>`);
+const cp = D.carParks[0];
+put(`<text class="l" x="${Bp.X((cp.x[0] + cp.x[1]) / 2).toFixed(1)}" y="${(Bp.Z(cp.z[1] + 22)).toFixed(1)}" text-anchor="middle">car parks</text>`);
 put(`<text class="l" x="${Bp.X(520).toFixed(1)}" y="${(Bp.Z(40)).toFixed(1)}" text-anchor="middle">terraces</text>`);
 
 /* labels inside panel A */
-put(`<text class="l" x="${A.X(34).toFixed(1)}" y="${(A.Z(D.pitch.halfW) + 16).toFixed(1)}" text-anchor="middle">pitch 105 × 68 m</text>`);
-put(`<text class="l" x="${A.X(40).toFixed(1)}" y="${(A.Z(-D.roof.ringB) - 7).toFixed(1)}" text-anchor="middle" fill="#6f6a62">roof opening 128 × 82 m</text>`);
-put(`<text class="l" x="${A.X(0).toFixed(1)}" y="${(A.Z(-D.bowl.halfW) - 10).toFixed(1)}" text-anchor="middle">bowl 250 × 200 m · roof 48 m</text>`);
+put(`<text class="l" x="${A.X(34).toFixed(1)}" y="${(A.Z(D.pitch.halfW) + 16).toFixed(1)}" text-anchor="middle">pitch ${D.pitch.length} × ${D.pitch.width} m</text>`);
+const OPEN_L = D.bowl.frontL - D.roof.ringInset, OPEN_W = D.bowl.frontW - D.roof.ringInset;
+put(`<text class="l" x="${A.X(40).toFixed(1)}" y="${(A.Z(-OPEN_W) - 7).toFixed(1)}" text-anchor="middle" fill="#6f6a62">roof opening ${OPEN_L * 2} × ${OPEN_W * 2} m</text>`);
+put(`<text class="l" x="${A.X(0).toFixed(1)}" y="${(A.Z(-D.bowl.halfW) - 10).toFixed(1)}" text-anchor="middle">bowl ${D.bowl.halfL * 2} × ${D.bowl.halfW * 2} m · roof ${D.roof.fasciaTop} m</text>`);
 put(`<text class="l" x="${A.X(0).toFixed(1)}" y="${(A.Z(D.podium.halfW) - 12).toFixed(1)}" text-anchor="middle">podium plaza, +1.5 m</text>`);
-put(`<text class="l" x="${A.X(-95).toFixed(1)}" y="${A.Z(-62).toFixed(1)}" text-anchor="middle">single steep tier, 34°</text>`);
-put(`<text class="l" x="${A.X(95).toFixed(1)}" y="${A.Z(-62).toFixed(1)}" text-anchor="middle">four tiers</text>`);
-put(`<text class="l" x="${A.X(0).toFixed(1)}" y="${A.Z(62).toFixed(1)}" text-anchor="middle">three tiers + boxes (north and south)</text>`);
+put(`<text class="l" x="${A.X(-95).toFixed(1)}" y="${A.Z(-62).toFixed(1)}" text-anchor="middle">single steep tier, ${rake(D.sides.W.el[0]).toFixed(0)}°</text>`);
+put(`<text class="l" x="${A.X(95).toFixed(1)}" y="${A.Z(-62).toFixed(1)}" text-anchor="middle">${D.sides.E.el.filter((e) => e.t === 'tier').length} tiers</text>`);
+put(`<text class="l" x="${A.X(0).toFixed(1)}" y="${A.Z(62).toFixed(1)}" text-anchor="middle">${D.sides.NS.el.filter((e) => e.t === 'tier').length} tiers + boxes (north and south)</text>`);
 
 /* ── the flights ────────────────────────────────────────────────────── */
-const HUE = { x: '#c2410c', z: '#0e7490' };
+// Deliberately NOT the app's physics hues: in the app orange means velocity,
+// and a plan where orange means "cut along the pitch" would teach the wrong
+// thing to anyone who has learned the diagram.
+const HUE = { x: '#4c5a3f', z: '#4a4660' };
 const groups = new Map();
 let n = 0;
 const rows = [];
@@ -130,6 +141,14 @@ for (const sc of SCENARIOS) {
 /* Chips are placed greedily: try the dot itself, then step out at right
    angles to the cut until nothing else is already there. Thirteen launch
    sites inside one penalty area need it. */
+// one lane per flight that shares an axis, so coincident arrows separate
+const laneOf = new Map();
+{
+  const byAxis = { x: [], z: [] };
+  for (const sc of SCENARIOS) { const st = SITES[sc.id]; if (st) byAxis[st.axis].push(sc.id); }
+  for (const list of Object.values(byAxis))
+    list.forEach((id, i) => laneOf.set(id, i - (list.length - 1) / 2));
+}
 const placed = [], chipJobs = [];
 const free = (x, y) => !placed.some((q) => Math.hypot(q.x - x, q.y - y) < 26);
 
@@ -142,12 +161,18 @@ for (const [k, list] of groups) {
     const reach = isFinite(fl.range) ? Math.abs(fl.range) : 200;
     if (reach <= 2) continue;
     const col = HUE[site.axis];
-    const ex = site.axis === 'x' ? ox + site.dir * reach : ox;
-    const ez = site.axis === 'z' ? oz + site.dir * reach : oz;
-    put(`<line x1="${X0.toFixed(1)}" y1="${Z0.toFixed(1)}" x2="${A.X(ex).toFixed(1)}" y2="${A.Z(ez).toFixed(1)}" stroke="${col}" stroke-width="2.4" opacity="0.72" marker-end="url(#a${site.axis})"/>`);
-    put(`<circle cx="${A.X(ex).toFixed(1)}" cy="${A.Z(ez).toFixed(1)}" r="3.4" fill="${col}"/>`);
+    // Six along-the-pitch flights all live on z = 0. Drawn on one line they
+    // are one line; fanned a few metres apart in the perpendicular they stay
+    // honest about where they start and readable about which is which.
+    const lane = (laneOf.get(sc.id) || 0) * 7;
+    const ox2 = site.axis === 'x' ? ox : ox + lane;
+    const oz2 = site.axis === 'z' ? oz : oz + lane;
+    const ex = site.axis === 'x' ? ox2 + site.dir * reach : ox2;
+    const ez = site.axis === 'z' ? oz2 + site.dir * reach : oz2;
+    put(`<line x1="${A.X(ox2).toFixed(1)}" y1="${A.Z(oz2).toFixed(1)}" x2="${A.X(ex).toFixed(1)}" y2="${A.Z(ez).toFixed(1)}" stroke="${col}" stroke-width="2.2" opacity="0.8" marker-end="url(#a${site.axis})"/>`);
+    put(`<circle cx="${A.X(ex).toFixed(1)}" cy="${A.Z(ez).toFixed(1)}" r="3.2" fill="${col}"/>`);
   }
-  put(`<circle cx="${X0.toFixed(1)}" cy="${Z0.toFixed(1)}" r="3.5" fill="#1a1714"/>`);
+  put(`<circle cx="${X0.toFixed(1)}" cy="${Z0.toFixed(1)}" r="4" fill="#ffffff" stroke="#1a1714" stroke-width="1.6"/>`);
   chipJobs.push({ X0, Z0, list });
 }
 
@@ -161,7 +186,7 @@ for (const { X0, Z0, list } of chipJobs) {
     }
     placed.push({ x: cxp, y: cyp });
     if (Math.hypot(cxp - X0, cyp - Z0) > 2)
-      put(`<line x1="${X0.toFixed(1)}" y1="${Z0.toFixed(1)}" x2="${cxp.toFixed(1)}" y2="${cyp.toFixed(1)}" stroke="#6f6a62" stroke-width="1"/>`);
+      put(`<line x1="${X0.toFixed(1)}" y1="${Z0.toFixed(1)}" x2="${cxp.toFixed(1)}" y2="${cyp.toFixed(1)}" stroke="#ffffff" stroke-width="3" opacity="0.85"/><line x1="${X0.toFixed(1)}" y1="${Z0.toFixed(1)}" x2="${cxp.toFixed(1)}" y2="${cyp.toFixed(1)}" stroke="#4a463f" stroke-width="1.2"/>`);
     put(`<circle cx="${cxp.toFixed(1)}" cy="${cyp.toFixed(1)}" r="11.5" fill="${HUE[site.axis]}" stroke="#fff" stroke-width="1.8"/>`);
     put(`<text class="n" x="${cxp.toFixed(1)}" y="${cyp.toFixed(1)}" text-anchor="middle" dy="4.6">${idx}</text>`);
   }
@@ -169,7 +194,7 @@ for (const { X0, Z0, list } of chipJobs) {
 
 /* ── the key ────────────────────────────────────────────────────────── */
 const KX = 948, KY = 560;
-put(`<text class="h" x="${KX}" y="${KY - 12}">3 · The thirteen</text>`);
+put(`<text class="h" x="${KX}" y="${KY - 12}">3 · The ${spell(COUNT)}</text>`);
 put(`<rect x="${KX}" y="${KY}" width="572" height="${(rows.length * 29 + 56).toFixed(0)}" fill="#fff" rx="12" stroke="#e2ddd5"/>`);
 let ky = KY + 30;
 for (const { n: idx, sc, site } of rows) {
@@ -180,9 +205,9 @@ for (const { n: idx, sc, site } of rows) {
   ky += 29;
 }
 put(`<line x1="${KX + 16}" y1="${ky - 6}" x2="${KX + 556}" y2="${ky - 6}" stroke="#e2ddd5"/>`);
-put(`<circle cx="${KX + 24}" cy="${ky + 14}" r="6" fill="#c2410c"/>`);
+put(`<circle cx="${KX + 24}" cy="${ky + 14}" r="6" fill="#4c5a3f"/>`);
 put(`<text class="km" x="${KX + 40}" y="${ky + 18}">cut ALONG the pitch</text>`);
-put(`<circle cx="${KX + 214}" cy="${ky + 14}" r="6" fill="#0e7490"/>`);
+put(`<circle cx="${KX + 214}" cy="${ky + 14}" r="6" fill="#4a4660"/>`);
 put(`<text class="km" x="${KX + 230}" y="${ky + 18}">cut ACROSS the pitch</text>`);
 
 /* scale bars and north */

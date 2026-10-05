@@ -90,12 +90,22 @@ What the projector was missing, and now has:
 
 - **Polygon clipping** against the near plane (Sutherland–Hodgman, in
   `grid.js`). Without it the ground plane you are standing on gets dropped the
-  moment it straddles the camera.
+  moment it straddles the camera. The near plane is 1.0 m, not 0.4: dividing
+  by 0.4 multiplies screen coordinates by about 1900, so a clipped vertex
+  lands thousands of pixels away and no bounding-box reject can catch the
+  polygon it belongs to. Projected coordinates are clamped to a guard band as
+  well, and a face that is both very close and canvas-swallowing is dropped —
+  every piece of this scene is subdivided, so a face like that is an artefact
+  by definition.
 - **A painter's-algorithm depth sort** on *centroid* depth, not the far corner.
   Sorting on the far corner made a fifty-metre roof strip sort as though it were
-  distant, and the stand underneath painted straight over the top of it. Long
-  pieces are also subdivided — the roof into seven radial rings — so the sort has
-  compact things to order.
+  distant, and the stand underneath painted straight over the top of it.
+- **A size cap on polygons.** Painter's algorithm orders whole polygons, so one
+  280 m podium slab can sort "far" on its centroid and still have a near end
+  that paints across a building — which is exactly what it did. Nothing longer
+  than 45 m reaches the sort now; the roof is split into seven radial rings and
+  every box face and ground surface is tiled, with a hair of overlap so the
+  tile edges do not antialias into a visible grid.
 - **A separate ground pass.** Every flat surface sits at the same height, so
   depth-sorting them against each other is a coin toss. They are drawn first, in
   big-to-small order; everything with height sits on them and is sorted after.
@@ -121,18 +131,54 @@ front of them: there is no depth buffer. Beyond the district, labelled distance
 rings every 500 m, so a flight that never comes back still has something to be
 measured against.
 
+### Two geometry bugs worth naming
+
+The roof opening was an ellipse, 128 × 82, over a front row that is a rounded
+rectangle. In the pitch-corner direction the ellipse reaches about 53 m while
+the pitch corner is at 62.6 m, so the roof oversailed nine metres of playing
+surface at each corner while leaving the end seats open to the sky. The
+opening is now the front row's own plan inset by 2 m, so every seat is covered
+and the whole pitch is open — by construction rather than by tuning.
+
+
+The bowl and the roof were generated from two *different* rounded rectangles —
+the bowl by offsetting the front row outward, the roof from its own plan with
+its own corner radius. They agreed along the straight sides and missed each
+other in the corners, and you could see the district through the gap. Both now
+come from one function, `planRadius(direction, d)`: the front row is a rounded
+rectangle 124 × 84 with a 30 m radius, and offsetting it outward by d grows
+every radius by exactly d. 63 m of depth therefore gives a bowl and a roof that
+are both 250 × 210 with a 93 m corner radius, by construction rather than by
+coincidence.
+
 ## `css/tokens.css`
 
 A new scenery block at the bottom, in two themes. Rules it follows:
 
+- **Three value bands, at least 2:1 apart.** A section cuts material, and the
+  convention is that cut material is the darkest thing on the page, the volume
+  behind the cut is the lightest, and the surfaces you are looking at sit
+  between: `--structure-dark` (poché) → `--seat` (raked seating) → `--interior`.
+  The first attempt had seating and cut concrete at 1.01:1 — the same colour —
+  and the whole bowl read as a quarry face.
 - **Scenery never competes.** Every token is low chroma and lives in a narrow
-  lightness band, well away from the five physics hues (orange velocity, cyan
-  displacement, violet acceleration, magenta second object, green markers).
-  Those five are unchanged.
+  lightness band, well away from the five physics hues. In particular the
+  brickwork was pulled out of the velocity hue: a district of warm orange roofs
+  is a district arguing with the velocity vector. Velocity itself was darkened
+  in the light theme, from 3.2:1 against its own sky to 5.9:1 — the loudest
+  thing on screen cannot be the weakest-contrasting element in the frame.
 - **Light is a daytime match, dark is a floodlit night match** — not a dark copy
   of the day. At night the *grass gets brighter* while everything around it gets
-  darker, the box glazing lights up, floodlight beams fall from the compression
-  ring onto the pitch, and the turf carries a lit top edge.
+  darker, the box glazing lights up, beams fall from the compression ring onto
+  the turf (clipped to the roof opening, because light does not pass through a
+  stand), and a glow dome sits over the bowl that gets *stronger* as you pull
+  away — which is how you find a night match from a mile off, and the opposite
+  of what level-of-detail would do if left to itself.
+- **The value bands invert at night, deliberately.** On paper the poché is
+  darkest and the volume behind is lightest. Against a near-black sky the
+  darkest possible poché is invisible, so at night the cut material is the
+  lightest of the three — it is the edge catching the floodlights — and the
+  unlit volume behind it is the darkest. Same convention, read by another light.
 - **Figure and ground.** `--structure-dark` is the poché — the material the
   section actually cuts — and sits clearly darker than `--interior`, the volume
   behind the cut. Without that gap a three-tier stand is a grey wedge.
@@ -144,6 +190,27 @@ New tokens: `--sky-top`, `--sky-bottom`, `--haze`, `--earth`, `--interior`,
 `--structure`, `--structure-dark`, `--roof-top`, `--roof-under`, `--prop`,
 `--water`, `--park`, `--flood`, `--far-grid`.
 
+## Readability decisions worth recording
+
+- **Labels have a 13 px floor and no plates.** The floor used to be 15, which
+  silently overrode every `size: 13` a caller asked for. Opaque plates punched
+  white holes in the daylight drawing, so a label now gets a halo stroke in the
+  surface colour instead — it lifts text off the background without erasing it.
+  A label that cannot find space used to be dropped; important ones now take a
+  further slot and draw a leader back to what they name.
+- **Nothing points at nothing.** A landmark height is only drawn when the
+  geometry carrying it is in this cut and on screen, and it anchors to that
+  geometry's own position rather than to the right edge. Seven of the nine
+  scenarios cut across the pitch, where there is no goal — so there is no
+  crossbar label in them.
+- **The range bracket measures the past.** Drawing the full range while the ball
+  is halfway there puts a tick on empty grass fifty metres ahead of the object
+  and calls it a measurement. It reads "travelled so far" during the flight and
+  snaps to the full range on landing.
+- **The crowd is the ruler.** A section cuts through one spectator per row, and
+  a seated person is 0.85 m above a seat on rows 0.80 m apart. That makes the
+  stand measurable by eye, and it is the best scale reference in the building.
+
 ## Motion
 
 Playback was already real time; it is now labelled as such and joined by 0.5×
@@ -153,11 +220,78 @@ no longer rescales mid-flight, a faster launch visibly crosses the pitch faster.
 ## Level of detail
 
 Three bands, by visible width: **pitch** under 30 m, **stadium** 30–300 m,
-**district** 300 m–2 km. Each feature also has its own threshold, so detail
+**district** 300 m–2 km — and each is a *camera*, not a crop. A segmented
+control next to the 2D/3D switch moves between them: Pitch rides with the ball
+at a 27 m span, where a 1.8 m person is sixty pixels tall and the 0.22 m ball
+is a real disc; Stadium is the fit; District pulls back to 941 m, far enough
+for the road, the station and the terraces. Before this they were zoom levels,
+and the pitch band was a crop of the stadium fit — which pointed the camera at
+an arbitrary patch of wall with no ball in it. Each feature also has its own threshold, so detail
 fades independently rather than snapping at a band edge — pitch markings survive
 to 560 m because they are still readable there, individual seat rows stop at
 130 m because they are not. Every fade runs over the last quarter of its range.
 The full table is in `design/dimensions.md`.
+
+## Light, colour and depth
+
+The first version was legible and grey. These are the changes that made it a
+place rather than a diagram of one.
+
+**Time of day.** Light is now a late-afternoon match: the sun low in the west,
+a warm band along the horizon, a blue sky above it, and long shadows. Dark is
+still a floodlit night. Both are lit scenes with a key and a fill; a scene with
+no light in it has no depth, whatever colours you give it.
+
+**Two lights, not one lambert term.** In 3D a surface takes a warm key from the
+sun and a cool fill from the sky dome, each tint normalised to mean 1 so it
+shifts hue and never brightness. A face turned to the sun goes warm, a face
+turned away goes blue, and the difference between them is what gives a grey
+building its form. A shadowed facade is lit by the sky, not painted black —
+the first attempt had the whole stadium as a black drum.
+
+**Shadows.** Every box and every prop is projected along the light onto y = 0
+as one dark polygon, and so is the bowl itself. It is not a shadow map and it
+costs a few hundred polygons; it is also most of what stops the model floating
+above its own ground. In 2D the same idea is a band of shade thrown across the
+pitch from each stand, worked out from the sun's 28° elevation: a 35 m stand
+lays 66 m of shadow, which is the one cue that tells you, in a drawing with no
+perspective in it, which things are tall.
+
+**Light in a flat drawing.** The section has no normals to shade, so the light
+is put in by hand: surfaces facing the sun take a warm lift, surfaces turned
+away take the cool of the sky, and the volume behind the cut graduates from
+daylight at the top to shadow at the bottom.
+
+**Colour where it is real.** Cars take one of five muted automotive paints —
+silver, graphite, white, navy, bottle green, and deliberately no reds, because
+a red car at that size reads as a velocity vector from across the room. Houses
+take brick, render or panel from their own position, with two roof colours;
+the seats are two greys in broad bands and never a club's. Scenery is held
+under about 35% saturation throughout and the trajectory carries a casing
+stroke, so none of it can out-shout the physics.
+
+**See through the near wall.** From inside a bowl there is always a stand
+between the camera and the pitch. Anything nearer than 70% of the look-at
+distance now goes glassy — four layers deep by the time you reach the pitch,
+so each has to be very light — which shows the pitch AND the building at once.
+It is a switch in Options, because sometimes you want the solid thing.
+
+**The camera travels.** Zoom, band changes and the four named 3D viewpoints are
+eased rather than cut: distance and scale in log space because zoom is
+multiplicative, angles and the look-at point linearly. Dragging stays
+immediate — lag in a direct manipulation reads as a fault, not as smoothing.
+A travelling camera invalidates the scenery cache on every frame, so while it
+travels it travels COARSE (the bowl drops from 84 × 26 segments to 30 × 9, the
+shadows and distant props are skipped) and sharpens 200 ms after it stops.
+Measured: 14 ms a frame while moving, under 1 ms a frame during a flight.
+
+**The horizon.** A finite ground plane has an edge and from 350 m up you can
+see it. The far ground is now painted behind everything from the computed
+horizon down, so the edge has the same colour on both sides and disappears
+into a haze band.
+
+**Streets, not runways.** Terraces are built in 88 m blocks with 11 m cross
+streets between them. One unbroken six-hundred-metre ridge read as a runway.
 
 ## What did not change
 

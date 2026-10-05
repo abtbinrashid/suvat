@@ -15,19 +15,72 @@
 
 import { fitCanvas, palette, stroke, arrow, dot, fmt, niceStep, clamp, labels, cssVar } from './util.js';
 import { createCamera3D } from './grid.js';
-import { slice, siteFor, siteMap } from '../world/world.js';
+import { slice, siteFor, siteMap, deckProfile } from '../world/world.js';
 import { D } from '../world/dims.js';
 import * as W2 from './world2d.js';
 
 export { createCamera3D };
 
-export function createCamera() { return { cx: 0, cy: 0, scale: 8, fit: true, touched: false }; }
+export function createCamera() { return { cx: 0, cy: 0, scale: 8, fit: true, touched: false, band: 'stadium' }; }
+
+/* ── the three zoom bands, as places to stand rather than crops ────────
+   Pitch level follows the ball at a span where a 1.8 m person is 60 px and
+   the 0.22 m ball is a real disc. Stadium is the fit. District pulls back to
+   the road, the station and the terraces. Each is a camera, not a zoom. */
+export function setBand(cam, band) {
+  cam.band = band;
+  cam.touched = true;
+  cam.follow = band === 'pitch';
+  if (band === 'stadium') { cam.fit = true; cam.wantSpan = null; return; }
+  cam.fit = false;
+  cam.wantSpan = band === 'pitch' ? 26 : 900;
+}
+
+/** Pitch level rides with the object; there is nothing else worth centring on. */
+function applyBand(cam, w, h, u0, ball) {
+  if (cam.fit || !cam.wantSpan) return;
+  const scale = (w - 60) / cam.wantSpan;
+  const BOTTOM = 74;
+  const groundOffset = (h - BOTTOM - h / 2) / scale;
+  cam.want = cam.follow
+    ? { scale, cx: u0 + ball.x, cy: Math.max(groundOffset, ball.y - (h / 2 - 90) / scale) }
+    : { scale, cx: 0, cy: groundOffset };
+}
+
+/* ── moving the camera, rather than teleporting it ──────────────────────
+   A zoom that jumps is a zoom you have to re-read from scratch; a zoom that
+   travels keeps you oriented the whole way. Scale is eased in LOG space,
+   because zoom is multiplicative — linear easing crawls at the wide end and
+   bolts at the close end. Panning and orbiting stay immediate: a drag is a
+   direct manipulation and lag in one feels like a fault. */
+export function easeCamera(cam, dt) {
+  if (!cam.want) return false;
+  const k = 1 - Math.exp(-dt * 9.5);
+  let moving = false;
+  if (cam.want.scale != null) {
+    const r = Math.log(cam.want.scale / cam.scale);
+    if (Math.abs(r) > 0.0008) { cam.scale *= Math.exp(r * k); moving = true; }
+    else cam.scale = cam.want.scale;
+  }
+  for (const key of ['cx', 'cy']) {
+    if (cam.want[key] == null) continue;
+    const d = cam.want[key] - cam[key];
+    const span = 40 / cam.scale;
+    if (Math.abs(d) > span * 0.002) { cam[key] += d * k; moving = true; }
+    else cam[key] = cam.want[key];
+  }
+  // A travelling camera invalidates the scenery cache on every frame, so
+  // while it travels it travels cheap and sharpens when it stops.
+  cam.moving = moving;
+  return moving;
+}
+const snapWant = (cam) => { cam.want = { scale: cam.scale, cx: cam.cx, cy: cam.cy }; };
 
 /* ── fitting, once ───────────────────────────────────────────────────────
    The brief is explicit: fit before launch and do not rescale during it. A
    camera that keeps rescaling turns a fast launch and a slow one into the
    same picture, which destroys the one thing the view exists to show. */
-function autoFit(cam, flights, markers, w, h, u0) {
+function autoFit(cam, flights, markers, w, h, u0, section) {
   let uLo = u0, uHi = u0, yHi = 4;
   for (const f of flights) {
     if (!f) continue;
@@ -41,23 +94,50 @@ function autoFit(cam, flights, markers, w, h, u0) {
   if (markers?.target)   { uHi = Math.max(uHi, u0 + markers.target.x + 4);   uLo = Math.min(uLo, u0 + markers.target.x - 4);   yHi = Math.max(yHi, markers.target.y); }
   if (markers?.heightLine != null) yHi = Math.max(yHi, markers.heightLine);
 
+  /* THE PLACE IS HALF THE SUBJECT, so the frame has to contain some of it.
+     Fitting the flight alone gave a third of the canvas to empty sky, ninety
+     pixels to the south stand and four hundred and eighty to the north one.
+     The bowl is brought into the fit, weighted so it widens the frame without
+     ever shrinking the flight to a scratch. */
+  const flightSpan = Math.max(12, uHi - uLo);
+  if (section) {
+    let bLo = Infinity, bHi = -Infinity, bTop = 0;
+    for (const deck of section.decks) {
+      for (const el of deckProfile(deck)) {
+        bLo = Math.min(bLo, el.u0, el.u1); bHi = Math.max(bHi, el.u0, el.u1);
+        bTop = Math.max(bTop, el.y0, el.y1);
+      }
+    }
+    for (const wing of section.roof.wings) {
+      bLo = Math.min(bLo, wing.outerU, wing.inner); bHi = Math.max(bHi, wing.outerU, wing.inner);
+    }
+    if (isFinite(bLo)) {
+      bTop = Math.max(bTop, section.roof.fasciaTop);
+      // Pull the frame towards the bowl by at most 45% of the distance. A
+      // 20 m throw does not get a 250 m frame; a 100 m one gets its stadium.
+      const k = clamp(flightSpan / 170, 0, 0.45);
+      uLo += (Math.max(bLo, uLo - flightSpan) - uLo) * k;
+      uHi += (Math.min(bHi, uHi + flightSpan) - uHi) * k;
+      yHi = Math.max(yHi, bTop * clamp(flightSpan / 120, 0.34, 1));
+    }
+  }
+
   // A minimum span, so the flight is always seen somewhere rather than nowhere:
   // 96 m is a little under the length of the pitch.
   const MIN_SPAN = 96;
-  let spanU = Math.max(MIN_SPAN, (uHi - uLo) * 1.18 + 10);
-  const spanY = Math.max(22, yHi * 1.26 + 8);
+  const spanU = Math.max(MIN_SPAN, (uHi - uLo) * 1.14 + 10);
+  const spanY = Math.max(22, yHi * 1.2 + 6);
   const sU = (w - 130) / spanU, sY = (h - 128) / spanY;
   cam.scale = Math.max(0.004, Math.min(sU, sY));
   cam.cx = (uLo + uHi) / 2;
 
   // The ground sits as low as the chrome below it allows, always. Nothing in
   // this model goes below the ground, so any space under the datum is spent
-  // on earth nobody needs to look at — and the scale is already chosen so the
-  // tallest point of the flight clears the top.
+  // on earth nobody needs to look at.
   const BOTTOM = 74;                      // range bar, its label, the scale bar
-  const groundY = h - BOTTOM;
-  cam.cy = (groundY - h / 2) / cam.scale;
+  cam.cy = (h - BOTTOM - h / 2) / cam.scale;
   cam.fit = false;
+  snapWant(cam);                          // a fit arrives, it does not travel
 }
 
 export function render(canvas, cam, o) {
@@ -71,7 +151,9 @@ export function render(canvas, cam, o) {
   const site = siteFor(scenario?.id);
   const { u0 } = siteMap(site);
   const list = [f, second].filter(Boolean);
-  if (cam.fit) autoFit(cam, list, markers, w, h, u0);
+  const section = slice({ axis: site.axis, at: site.at, dir: site.dir });
+  if (cam.fit) autoFit(cam, list, markers, w, h, u0, section);
+  else applyBand(cam, w, h, u0, f.pos(fired ? t : 0));
 
   /* section coordinates on the left, flight coordinates on the right */
   const su = (u) => w / 2 + (u - cam.cx) * cam.scale;
@@ -86,18 +168,21 @@ export function render(canvas, cam, o) {
   const band = W2.zoomBand(span);
 
   /* ── the world, painted once and kept ─────────────────────────────── */
-  const section = slice({ axis: site.axis, at: site.at, dir: site.dir });
+  // The key includes the camera, so a pan repaints the world every frame. It
+  // repaints a CHEAPER world while the pointer is down: props and house
+  // detail are what cost, and they are also what nobody studies mid-drag.
   const key = [w, h, document.documentElement.dataset.theme, cam.scale.toFixed(4),
-               cam.cx.toFixed(2), cam.cy.toFixed(2), scenario?.id].join('|');
+               cam.cx.toFixed(2), cam.cy.toFixed(2), scenario?.id, cam.moving ? 'lo' : 'hi'].join('|');
   const bg = W2.layer('section', w, h, key, (g) => {
     W2.drawSection({ ctx: g, w, h, span, scale: cam.scale, sx: su, sy, px: pu, py,
-                     section, tn, L: null });
+                     section, tn, L: null, moving: cam.moving });
   });
   ctx.drawImage(bg, 0, 0, w, h);
 
   /* ── readability chrome ───────────────────────────────────────────── */
   if (show.grid) metreGrid({ ctx, w, h, su, sy, pu, py, cam, P, L, u0 });
-  if (show.ruler !== false) W2.heightRuler({ ctx, w, h, sy, py, scale: cam.scale, tn }, L);
+  if (show.ruler !== false) W2.heightRuler({ ctx, w, h, sy, py, scale: cam.scale, tn }, L,
+    Math.max(f.apexHeight, f.params.h, D.roof.fasciaTop, markers.heightLine ?? 0));
   landmarkLabels({ ctx, w, h, sy, su, L, tn, span, P, section, uMin: pu(0), uMax: pu(w) });
 
   /* ── height line, fence, target ───────────────────────────────────── */
@@ -212,8 +297,8 @@ export function render(canvas, cam, o) {
         stroke(ctx, [{ x: x0, y }, { x: x1, y }], { color: P.muted, width: 2.2 });
         for (const X of [x0, x1]) stroke(ctx, [{ x: X, y: y - 6 }, { x: X, y: y + 6 }], { color: P.muted, width: 2.2 });
         L.add(`${landed ? 'horizontal displacement' : 'travelled so far'} ${fmt(value, 2)} m`,
-              clamp((x0 + x1) / 2, 90, w - 90), y + 17,
-              { color: P.muted, align: 'center', pri: 7, push: 'down', size: 16 });
+              clamp((x0 + x1) / 2, 150, w - 150), y + 18,
+              { color: P.muted, align: 'center', pri: 7, size: 16, maxPush: 0 });
       }
     }
   }
@@ -295,17 +380,20 @@ export function render(canvas, cam, o) {
   /* ── launch point ─────────────────────────────────────────────────── */
   const lp = M({ x: 0, y: f.params.h });
   if (f.params.h > 0) {
-    stroke(ctx, [{ x: lp.x, y: lp.y }, { x: lp.x, y: groundY }], { color: P.strong, width: 3.4, dash: [7, 5] });
-    L.add(`${fmt(f.params.h, 1)} m`, lp.x - 12, (lp.y + groundY) / 2, { color: P.strong, align: 'right', pri: 6, size: 18 });
+    stroke(ctx, [{ x: lp.x, y: lp.y }, { x: lp.x, y: groundY }], { color: P.mark, width: 2.4, dash: [7, 5], alpha: 0.9 });
+    L.add(`${fmt(f.params.h, 1)} m`, lp.x - 10, (lp.y + groundY) / 2, { color: P.mark, align: 'right', pri: 6, size: 16 });
   }
   dot(ctx, lp.x, lp.y, 3.5, { fill: P.strong });
   if (!fired) L.add(site.place, lp.x, lp.y - 30, { color: P.muted, align: 'center', pri: 4, size: 15 });
 
   /* ── scale bar and where we are ───────────────────────────────────── */
-  const bar = W2.scaleBar({ ctx, scale: cam.scale, tn }, 18, h - 28);
-  L.add(bar.label, 18 + bar.px + 9, h - 30, { color: P.strong, pri: 11, size: 14, bg: false });
-  L.add(`${W2.BAND_LABEL[band]} · 1 unit = 1 m`, 18, h - 52,
-        { color: P.faint, pri: 11, size: 13, bg: false });
+  // Bottom RIGHT: the range bracket owns the centre of the earth band, and
+  // the two kept colliding, which sent the bracket's label off on a leader.
+  const barX = w - 210;
+  const bar = W2.scaleBar({ ctx, scale: cam.scale, tn }, barX, h - 28);
+  L.add(bar.label, barX + bar.px + 9, h - 28, { color: P.strong, pri: 11, size: 14, bg: false });
+  L.add(`${W2.BAND_LABEL[band]} · 1 unit = 1 m`, w - 12, h - 50,
+        { color: P.strong, align: 'right', pri: 11, size: 13 });
 
   L.draw(ctx, w, h);
   cam._map = { sx, sy, px, py, su, pu, u0, ball: { x: p.x, y: p.y } };
@@ -424,7 +512,7 @@ function landmarkLabels({ ctx, w, h, sy, su, L, tn, span, P, section, uMin, uMax
     if (Y < 24 || Y > h - 86) continue;
     const anchor = clamp(su(m.u), 96, w - 14);
     ctx.beginPath(); ctx.moveTo(Math.min(anchor, 70), Y); ctx.lineTo(anchor, Y); ctx.stroke();
-    L.add(m.name, anchor + 6, Y, { color: P.muted, align: 'left', pri: -2, size: 13 });
+    L.add(m.name, anchor + 6, Y, { color: P.muted, align: 'left', pri: -2, size: 13, maxPush: 0 });
   }
   ctx.restore();
 }
@@ -562,9 +650,10 @@ export function attachControls(canvas, cam, onChange, getScene, onMarkerMove, on
   canvas.addEventListener('pointermove', (e) => {
     if (dragging) { const w = toWorld(e); if (w && onMarkerMove) onMarkerMove(dragging, w); return; }
     if (!drag) return;
-    cam.touched = true;
+    cam.touched = true; cam.moving = true; cam.wantSpan = null; cam.band = 'free';
     cam.cx -= (e.clientX - lx) / cam.scale;
     cam.cy += (e.clientY - ly) / cam.scale;
+    snapWant(cam);                        // a drag is direct: no easing
     lx = e.clientX; ly = e.clientY; onChange();
   });
   const end = (e, clicked) => {
@@ -585,12 +674,16 @@ export function attachControls(canvas, cam, onChange, getScene, onMarkerMove, on
     const r = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
     const before = cam._map ? { u: cam._map.pu(mx), y: cam._map.py(my) } : null;
-    cam.scale = clamp(cam.scale * Math.exp(-e.deltaY * 0.0014), 0.0035, 900);
-    if (before) {
-      const w = canvas.getBoundingClientRect().width, h = canvas.getBoundingClientRect().height;
-      cam.cx = before.u - (mx - w / 2) / cam.scale;
-      cam.cy = before.y + (my - h / 2) / cam.scale;
-    }
+    cam.wantSpan = null; cam.band = 'free';
+    const base = cam.want?.scale ?? cam.scale;
+    const scale = clamp(base * Math.exp(-e.deltaY * 0.0016), 0.0035, 900);
+    cam.moving = true;
+    clearTimeout(attachControls._z);
+    attachControls._z = setTimeout(() => { cam.moving = false; onChange(); }, 220);
+    const box = canvas.getBoundingClientRect();
+    cam.want = before
+      ? { scale, cx: before.u - (mx - box.width / 2) / scale, cy: before.y + (my - box.height / 2) / scale }
+      : { scale, cx: cam.cx, cy: cam.cy };
     onChange();
   }, { passive: false });
   canvas.addEventListener('dblclick', () => { cam.fit = true; cam.touched = false; onChange(); });
