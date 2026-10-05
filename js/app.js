@@ -523,7 +523,6 @@ for (const b of $('dim-seg').children) {
   b.addEventListener('click', () => {
     state.dim = b.dataset.dim;
     for (const x of $('dim-seg').children) x.setAttribute('aria-pressed', String(x === b));
-    $('view-seg').hidden = state.dim !== '3d';
     $('band-seg').hidden = state.dim === '3d';   // zoom bands are the 2D camera
     cam.fit = true; cam3.fit = true; dirty = true;
   });
@@ -532,13 +531,6 @@ for (const b of $('band-seg').children) {
   b.addEventListener('click', () => {
     scene.setBand(cam, b.dataset.band);
     for (const x of $('band-seg').children) x.setAttribute('aria-pressed', String(x === b));
-    dirty = true;
-  });
-}
-for (const b of $('view-seg').children) {
-  b.addEventListener('click', () => {
-    scene3d.setView(cam3, b.dataset.view, siteFor(state.id));
-    for (const x of $('view-seg').children) x.setAttribute('aria-pressed', String(x === b));
     dirty = true;
   });
 }

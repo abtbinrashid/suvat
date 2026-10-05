@@ -407,6 +407,31 @@ function metreGrid3D(ctx, V, P, L, { reach, site }) {
   }
 }
 
+/**
+ * Where the pointer lands in the world: un-project the cursor into a ray and
+ * meet the horizontal plane the orbit target sits in. That plane, rather than
+ * y = 0, keeps a zoom stable when the camera is looking at something off the
+ * ground — the target's height never changes, only where it sits on the map.
+ */
+function groundUnder(cam3, mx, my, w, h) {
+  if (!(w > 0 && h > 0)) return null;
+  const V = makeView3D(cam3, w, h);
+  // Inverse of proj(): screen → camera space at unit depth, then into world
+  // through the camera basis.
+  const cx = (mx - w / 2) / V.f;
+  const cy = -(my - h / 2) / V.f;
+  const dir = {
+    x: V.right.x * cx + V.up.x * cy + V.fwd.x,
+    y: V.right.y * cx + V.up.y * cy + V.fwd.y,
+    z: V.right.z * cx + V.up.z * cy + V.fwd.z,
+  };
+  if (Math.abs(dir.y) < 1e-6) return null;            // ray runs along the plane
+  const t = (cam3.target.y - V.eye.y) / dir.y;
+  if (!(t > 0) || !isFinite(t)) return null;          // the plane is behind us
+  const p = { x: V.eye.x + dir.x * t, z: V.eye.z + dir.z * t };
+  return isFinite(p.x) && isFinite(p.z) ? p : null;
+}
+
 export function attachControls3D(canvas, cam3, onChange, getScene, onResolve = {}) {
   let drag = false, lx = 0, ly = 0, down = null, hovering = false;
 
@@ -473,9 +498,24 @@ export function attachControls3D(canvas, cam3, onChange, getScene, onResolve = {
     e.preventDefault();
     moving = true; movedAt = performance.now(); cam3.touched = true;
     const base = cam3.want?.dist ?? cam3.dist;
-    cam3.want = { ...(cam3.want || {}), dist: clamp(base * Math.exp(e.deltaY * 0.0014), 8, 6000),
-                  yaw: cam3.want?.yaw ?? cam3.yaw, pitch: cam3.want?.pitch ?? cam3.pitch,
-                  target: cam3.want?.target ?? { ...cam3.target } };
+    const dist = clamp(base * Math.exp(e.deltaY * 0.0014), 8, 6000);
+    const target = cam3.want?.target ?? { ...cam3.target };
+
+    // ZOOM WHERE THE POINTER IS. Shortening the orbit radius alone pulls the
+    // camera towards whatever it already faced, so the thing you were pointing
+    // at slides out of frame. Slide the orbit target along the ground towards
+    // the point under the cursor by the same fraction the radius shrank, and
+    // that point stays put while everything else closes in around it.
+    const r = canvas.getBoundingClientRect();
+    const hit = groundUnder(cam3, e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+    if (hit && base > 1e-6) {
+      const k = clamp(1 - dist / base, -1, 1);   // + zooming in, − zooming out
+      target.x += (hit.x - target.x) * k;
+      target.z += (hit.z - target.z) * k;
+    }
+
+    cam3.want = { ...(cam3.want || {}), dist, target,
+                  yaw: cam3.want?.yaw ?? cam3.yaw, pitch: cam3.want?.pitch ?? cam3.pitch };
     onChange();
     clearTimeout(attachControls3D._t);
     attachControls3D._t = setTimeout(() => { moving = false; onChange(); }, 240);
