@@ -33,14 +33,14 @@ export function buildWorking(f, t) {
         { f: M`"vertical component" = u sin theta`,
           s: M`${d(u)} * sin ${sub(theta, 1)}° = ${d(f.uy)} [m s^-1]` },
       ],
-      note: 'Horizontal and vertical motion are now independent. They share only the time.',
+      note: 'Two separate problems now. They share only t.',
     });
   } else if (vertical) {
     steps.push({
       title: 'Resolve the initial velocity',
       rows: [{ f: 'Motion is vertical only',
                s: M`"horizontal component" = 0, "vertical component" = ${d(f.uy)} [m s^-1]` }],
-      note: 'There is no horizontal motion, so this is a one-dimensional problem.',
+      note: 'No horizontal motion, so this is a 1D problem.',
     });
   }
 
@@ -57,8 +57,8 @@ export function buildWorking(f, t) {
           r: M`t = ${d(f.tFlight, 3)} [s]` },
       ],
       note: h > 0
-        ? 'Launched above the ground, so the flight is not symmetrical — it spends longer coming down than going up.'
-        : 'Level ground, so the time up equals the time down.',
+        ? 'Launched above the ground, so longer coming down than going up.'
+        : 'Level ground, so time up equals time down.',
       skip: disc < 0,
     });
   } else {
@@ -68,7 +68,7 @@ export function buildWorking(f, t) {
                s: f.uy >= 0
                  ? 'The object never returns to the ground'
                  : M`t = h/abs(u sin theta) = ${d(f.tFlight, 3)} [s]` }],
-      note: 'With no gravitational field the velocity is constant and the path is a straight line.',
+      note: 'No field, so constant velocity and a straight-line path.',
     });
   }
 
@@ -83,7 +83,7 @@ export function buildWorking(f, t) {
           s: M`${d(f.uy * f.uy)}/${d(2 * g)} = ${d(f.apexHeight - h, 2)} [m]`,
           r: `${M`"greatest height above the ground" = ${d(f.apexHeight, 2)} [m]`} at ${M`t = ${d(f.tApex, 3)} [s]`}` },
       ],
-      note: 'Only vertical quantities appear — the horizontal motion is irrelevant here.',
+      note: 'Vertical only — the horizontal motion does not matter here.',
     });
   }
 
@@ -96,7 +96,7 @@ export function buildWorking(f, t) {
           s: M`${d(f.horiz)} * ${d(f.tFlight, 3)} = ${d(f.range, 2)} [m]`,
           r: M`"horizontal displacement" = ${d(f.range, 2)} [m]` },
       ],
-      note: 'There is no horizontal acceleration, so the horizontal velocity never changes.',
+      note: 'No horizontal acceleration, so this velocity never changes.',
     });
   }
 
@@ -123,16 +123,16 @@ export function buildWorking(f, t) {
 
 /** Does it clear an obstacle? Stated the way the mark scheme wants it. */
 export function obstacleCheck(f, ob) {
-  if (f.horiz <= 1e-9) return { ok: false, text: 'The launch is vertical, so it never reaches the fence.' };
+  if (f.horiz <= 1e-9) return { ok: false, text: 'A vertical launch never reaches the fence.' };
   const t = ob.x / f.horiz;
-  if (t > f.tMax) return { ok: false, text: `It lands after ${d(f.range, 2)} m, short of the fence at ${d(ob.x, 1)} m.` };
+  if (t > f.tMax) return { ok: false, text: `It lands at ${d(f.range, 2)} m, short of the fence at ${d(ob.x, 1)} m.` };
   const y = f.pos(t).y;
   const clear = y - ob.height;
   return {
     ok: clear > 0,
     text: clear > 0
-      ? `At a horizontal displacement of ${d(ob.x, 1)} m the height is ${d(y, 2)} m — it clears the fence by ${d(clear, 2)} m.`
-      : `At a horizontal displacement of ${d(ob.x, 1)} m the height is only ${d(y, 2)} m — it is ${d(-clear, 2)} m too low.`,
+      ? `At ${d(ob.x, 1)} m the height is ${d(y, 2)} m — it clears the fence by ${d(clear, 2)} m.`
+      : `At ${d(ob.x, 1)} m the height is ${d(y, 2)} m — ${d(-clear, 2)} m too low.`,
   };
 }
 
@@ -175,7 +175,7 @@ export function resolveAt(f, t) {
       formula: after ? 'Unchanged by the bounce' : M`u cos theta`,
       sub: after ? null : M`${d(u)} * cos ${sub(theta, 1)}° = ${d(vx)}`,
       value: vx, unit: 'm s⁻¹',
-      note: 'constant — there is no horizontal acceleration',
+      note: 'constant — no horizontal acceleration',
     },
     y: {
       name: 'Vertical component',
@@ -183,10 +183,12 @@ export function resolveAt(f, t) {
       sub: after ? null : M`${sub(f.uy)} - ${d(g)} * ${d(t, 2)} = ${d(vy)}`,
       value: vy, unit: 'm s⁻¹',
       note: g <= 1e-9
-        ? 'constant — with no gravitational field there is no acceleration at all'
+        ? 'constant — no field, no acceleration'
         : Math.abs(vy) < 0.05
-          ? 'momentarily zero — this is the top of the flight'
-          : `${DIR(vy)}, changing by ${M`${d(g)} [m s^-1]`} every second`,
+          ? 'zero — this is the top'
+          : vy > 0
+            ? `upwards, slowing by ${M`${d(g)} [m s^-1]`} each second`
+            : `downwards, gaining ${M`${d(g)} [m s^-1]`} each second`,
     },
     r: {
       name: 'Resultant speed',
@@ -206,7 +208,7 @@ export function resolveAt(f, t) {
       formula: after ? M`"horizontal velocity" * t` : M`u cos theta * t`,
       sub: after ? null : M`${d(f.horiz)} * ${d(t, 2)} = ${d(sx)}`,
       value: sx, unit: 'm',
-      note: `${M`a = 0`} horizontally, so ${M`s = ut`}`,
+      note: `${M`a = 0`}, so ${M`s = ut`}`,
     },
     y: {
       name: 'Vertical displacement',
@@ -216,7 +218,7 @@ export function resolveAt(f, t) {
       note: `${M`${d(p.y)} [m]`} above the ground`,
     },
     r: {
-      name: 'Distance from the launch',
+      name: 'Distance from launch',
       formula: M`sqrt("horizontal"^2 + "vertical"^2)`,
       sub: M`sqrt(${sub(sx)}^2 + ${sub(sy)}^2) = ${d(dist)}`,
       value: dist, unit: 'm',

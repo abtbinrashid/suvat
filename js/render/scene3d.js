@@ -8,7 +8,7 @@
 // A flight never moves the camera, so during a flight exactly one bitmap is
 // blitted and the only live drawing is the ball and its arrows.
 
-import { fitCanvas, palette, stroke, arrow, dot, fmt, clamp, labels, cssVar } from './util.js';
+import { fitCanvas, palette, stroke, arrow, dot, ballSprite, fmt, clamp, labels, cssVar } from './util.js';
 import { makeView3D, fit3D } from './grid.js';
 import { drawScenery3D, bearingName, farRings3D } from './world3d.js';
 import { tones, layer, zoomBand, BAND_LABEL, fade } from './world2d.js';
@@ -97,8 +97,10 @@ export function render(canvas, cam3, o) {
   if (second) poly(second.path(200).map(W), { color: P.second, width: 3.2, dash: [9, 6], alpha: .9 });
   if (show.path && fired) {
     const pts = f.path(260, t).concat([{ t, ...f.pos(t) }]).map(W);
-    poly(pts, { color: P.surface, width: 7.2, alpha: 0.45 });
-    poly(pts, { color: P.vel, width: 4.2 });
+    poly(pts, { color: P.surface, width: 6.0, alpha: 0.45 });
+    // The quieter velocity shade, and the thinner stroke: this is where the
+    // object has been. The vector now is --vel-vec, thinner still.
+    poly(pts, { color: P.vel, width: 3.2 });
   }
 
   // The launch mast drops to the DECK the launch sits on, not to y = 0 —
@@ -120,9 +122,9 @@ export function render(canvas, cam3, o) {
     if (fired && show.velocity && !resolve) {
       const e = V.point(W({ x: now.x + v.x * 0.55, y: now.y + v.y * 0.55 }));
       if (e) {
-        arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 3.8, head: 15 });
+        arrow(ctx, p.x, p.y, e.x, e.y, { color: P.velVec, width: 2.3, head: 14 });
         L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, e.x + 12, e.y - 12,
-              { color: P.vel, pri: 10, size: 19, weight: 600 });
+              { color: P.velVec, pri: 10, size: 19, weight: 600 });
       }
     }
     if (fired && show.acceleration && f.params.g > 0) {
@@ -132,8 +134,7 @@ export function render(canvas, cam3, o) {
 
     // the ball at its real 0.22 m, with the ring that keeps it findable
     const rpx = (D.prop.ball / 2) * (V.f / V.distTo(wp));
-    dot(ctx, p.x, p.y, Math.max(1.6, rpx), { fill: P.vel });
-    dot(ctx, p.x, p.y, Math.max(11, rpx + 7), { stroke: P.vel, width: fired ? 2 : 1.4 });
+    ballSprite(ctx, p.x, p.y, rpx, { ring: P.vel, fired });
 
     /* ── resolving, at the instant that was clicked ─────────────────── */
     // Only ever two components. The bearing is how the flight is placed in
@@ -149,7 +150,7 @@ export function render(canvas, cam3, o) {
           color: P.disp, width: 2.4, alpha: 0.95, pri: 12, sq,
           labelX: `horizontal ${fmt(resolve.sx, 1)} m`,
           labelY: `vertical ${fmt(resolve.sy, 1)} m`,
-          labelR: `${fmt(resolve.dist, 1)} m from the launch`,
+          labelR: `${fmt(resolve.dist, 1)} m from launch`,
         });
       }
 
@@ -160,16 +161,16 @@ export function render(canvas, cam3, o) {
       if (resolve.vertical) {
         const e = V.point(W({ x: now.x, y: now.y + v.y * k }));
         if (e) {
-          arrow(ctx, p.x, p.y, e.x, e.y, { color: P.vel, width: 4.2, head: 16 });
-          L.add(`vertical ${fmt(v.y, 1)} m s⁻¹ · no horizontal component`, e.x + 12, e.y,
-                { color: P.vel, pri: 16, size: 17, weight: 600 });
+          arrow(ctx, p.x, p.y, e.x, e.y, { color: P.velVec, width: 2.6, head: 14 });
+          L.add(`vertical ${fmt(v.y, 1)} m s⁻¹ · no horizontal part`, e.x + 12, e.y,
+                { color: P.velVec, pri: 16, size: 17, weight: 600 });
         }
       } else {
         tri3D(ctx, L, V, W, {
           a: { x: now.x, y: now.y },
           c: { x: now.x + v.x * k, y: now.y },
           b: { x: now.x + v.x * k, y: now.y + v.y * k },
-          color: P.vel, width: 3.4, pri: 16, sq,
+          color: P.velVec, width: 2.4, pri: 16, sq,
           labelX: `horizontal ${fmt(v.x, 1)} m s⁻¹`,
           labelY: `vertical ${fmt(v.y, 1)} m s⁻¹`,
           labelR: `${fmt(resolve.speed, 2)} m s⁻¹ at ${fmt(resolve.velocity.angle, 1)}°`,

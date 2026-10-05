@@ -14,6 +14,7 @@
 // sweep covers it. Add it as a raw string and the sweep fails. That is the
 // whole point of the file.
 
+import fs from 'node:fs';
 import { mathHTML, mathText, num, signed } from '../js/notation.js';
 import { EQUATIONS, solve } from '../js/core/suvat.js';
 import { flight, derivation } from '../js/core/projectile.js';
@@ -222,6 +223,50 @@ group('Whatever the engine says back on screen two', () => {
   }
   ok(said > 15, `the sweep reaches the engine's own words (${said} lines)`);
   ok(bag.length === 0, 'nothing the engine says is written as code', bag.join('\n         '));
+});
+
+
+/* == 3 · the sinks ==================================================== */
+
+// Typeset maths is markup. A sink that receives it must use innerHTML, because
+// textContent prints the tags at the student — which is exactly the bug this
+// group exists to catch, having already happened once. Any element below may
+// carry an equation; none of them may be filled with textContent.
+const MATH_SINKS = [
+  'solve-msg',     // what the engine worked out, and why it cannot
+  'notes',         // its assumptions
+  'working',       // the working panel
+  'res-title',     // the resolve card
+  'res-blocks',
+  'done-note',     // the landing card
+  'done-five',
+  'done-extra',
+];
+
+group('Nothing that can hold an equation is filled with textContent', () => {
+  const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+
+  // `const msg = $('solve-msg')` means `msg.textContent` is the same offence,
+  // so resolve the aliases before looking for it.
+  const alias = new Map();
+  for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\$\(\s*'([^']+)'\s*\)/g)) {
+    alias.set(m[1], m[2]);
+  }
+
+  const offences = [];
+  for (const m of src.matchAll(/(?:\$\(\s*'([^']+)'\s*\)|([A-Za-z_$][\w$]*))\s*\.textContent\s*=/g)) {
+    const id = m[1] ?? alias.get(m[2]);
+    if (id && MATH_SINKS.includes(id)) {
+      offences.push(`#${id} is filled with textContent — it can hold an equation`);
+    }
+  }
+  ok(offences.length === 0, 'every maths sink in app.js takes innerHTML', offences.join('\n         '));
+
+  // And the sinks have to still exist, or the list above is quietly dead.
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const gone = MATH_SINKS.filter((id) => !html.includes(`id="${id}"`));
+  ok(gone.length === 0, 'and every one of them is still in the page',
+     gone.length ? `missing from index.html: ${gone.join(', ')}` : '');
 });
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

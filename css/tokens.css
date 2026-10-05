@@ -45,7 +45,15 @@
      Velocity, displacement and acceleration take the three best-separated
      hues because they appear side by side. Magenta and green go to the second
      object and to markers, which rarely sit next to each other. */
-  --vel:    #ea580c;     /* velocity          — orange  */
+  /* Velocity gets TWO shades of the one hue, and the difference is a
+     hierarchy rather than a decoration. The traced trajectory is where the
+     object has been — a long stroke, drawn in --vel. The velocity vector is
+     what it is doing now, one short arrow, and it takes --vel-vec: the shade
+     with more contrast against this theme's background, so it reads as the
+     live quantity sitting on top of its own history. Same hue, so the colour
+     still says "velocity"; different value, so the two never merge. */
+  --vel:    #ea580c;     /* velocity, and the path it has flown — orange */
+  --vel-vec: #fb923c;    /* the vector now — lighter, for a night sky */
   --disp:   #0891b2;     /* displacement      — cyan    */
   --acc:    #7c3aed;     /* acceleration      — violet  */
   --second: #db2777;     /* a second object   — magenta */
@@ -82,6 +90,7 @@
 
   --vel:    #c2410c;   /* orange. Legibility comes from the path's casing stroke,
                           not from darkening the hue until it stops being orange. */
+  --vel-vec: #7c2708;  /* the vector now — deeper, for a daylight sky */
   --disp:   #0891b2;
   --acc:    #6d28d9;
   --second: #be185d;
@@ -139,6 +148,13 @@
   --structure: #6d7684; --structure-dark: #5c6572;
   --roof-top: #3e444e; --roof-under: #1c1f26;
   --prop: #70757d; --water: #16222b; --park: #22361f; --park-alt: #1c2d1a;
+
+  /* The object is a BALL, so it is drawn as one: lit from above-left, with a
+     seam and a rim. It is not a quantity and so does not take a quantity's
+     hue — a flat disc in velocity orange was the main reason the whole scene
+     read as a single colour. Floodlit at night, daylight by day, but leather
+     either way, so the four tones barely move between the themes. */
+  --ball-hi: #fffdf6; --ball: #e9e1cf; --ball-low: #8d8370; --ball-line: #241e17;
   --flood: #ffeec2; --far-grid: rgba(255,255,255,0.14);
   /* traffic, at night */
   --car-a: #6a7079; --car-b: #4d5259; --car-c: #7d828a;
@@ -163,6 +179,7 @@
   --structure: #cbc2b2; --structure-dark: #4a4238;
   --roof-top: #b4bac1; --roof-under: #7b8086;
   --prop: #5d564e; --water: #7fa8bf; --park: #7fa75f; --park-alt: #6e9450;
+  --ball-hi: #ffffff; --ball: #ece5d6; --ball-low: #a2957f; --ball-line: #3d352b;
   --flood: #fff6df; --far-grid: rgba(26,23,20,0.16);
   /* traffic: silver, graphite, white, navy, bottle green. No reds — red at
      this size reads as a velocity vector from across the room. */

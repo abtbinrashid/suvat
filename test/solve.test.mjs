@@ -68,7 +68,7 @@ group('Refusing, with a reason the student can act on', () => {
   ok(/one more|two more/.test(r.reason), 'and says how many more are needed');
 
   r = solveLaunch({ theta: 45, h: 10, g: 9.8 });
-  ok(!r.ok && /where it lands|time|landing speed/.test(r.reason), 'missing speed says what would fix it');
+  ok(!r.ok && /s, t or v/.test(r.reason), 'missing speed says what would fix it');
 
   r = solveLaunch({ u: 20, theta: 45, h: 10 });
   ok(!r.ok && /acceleration/.test(r.reason), 'missing g is named');
@@ -178,7 +178,7 @@ group('The launch height, when it was never entered', () => {
   // and it admits when it simply assumed zero
   r = solveLaunch({ u: 28, theta: 45, g: 9.8 });
   ok(r.ok && r.assumedH, 'flags the assumption');
-  ok(r.notes.some((x) => /taken as 0 m/.test(x)), 'and writes it down');
+  ok(r.notes.some((x) => /ground level/.test(x)), 'and writes it down');
 });
 
 group('The full set handed back for the completion screen', () => {

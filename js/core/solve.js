@@ -61,7 +61,7 @@ export function solveLaunch(input = {}, opts = {}) {
   let g;
   if (have(k.g)) {
     g = Math.abs(k.g);
-    if (k.g < -EPS) ctx.notes.push('The acceleration was entered as a negative number. Its size is what is used — the sign comes from the direction convention below.');
+    if (k.g < -EPS) ctx.notes.push('The acceleration was typed negative. Its size is used; the sign comes from the convention below.');
   } else if (have(k.u) && have(k.v) && have(k.h) && Math.abs(k.h) > EPS) {
     // v² = u² + 2gh is true at any angle, because it is really conservation of energy.
     g = (k.v * k.v - k.u * k.u) / (2 * k.h);
@@ -186,7 +186,7 @@ function asArc(k, g, ctx) {
   if (!have(h)) {
     h = 0;
     ctx.assumedH = true;
-    ctx.notes.push('No launch height given, so it is taken as 0 m — launched from the ground.');
+    ctx.notes.push('No launch height given, so it is taken as ground level.');
   }
 
   /* the last gap among u and θ */
@@ -203,7 +203,7 @@ function asArc(k, g, ctx) {
     if (!r.ok) return fail(r.reason, ctx);
     theta = r.theta; ctx.add('theta', r.how);
     if (r.alt != null) {
-      ctx.notes.push(`A second angle works just as well: ${d(r.alt, 1)}°. This is the shallower of the two — the steeper one gets there later.`);
+      ctx.notes.push(`A second angle works too: ${d(r.alt, 1)}°. This is the shallower; the steeper one takes longer.`);
       ctx.altTheta = r.alt;
     }
   }
@@ -218,16 +218,16 @@ function findU(theta, h, g, s, t, v) {
 
   if (have(t) && t > EPS) {
     // 0 = h + u sin θ t − ½gt²  →  u = (½gt² − h) / (t sin θ)
-    if (Math.abs(sn) < EPS) return { ok: false, reason: 'A horizontal launch falls for a time set only by the height, so the time of flight cannot give the speed. Give the horizontal displacement instead.' };
+    if (Math.abs(sn) < EPS) return { ok: false, reason: 'A horizontal launch falls for a time set only by the height, so t cannot give the speed. Give s instead.' };
     const u = (0.5 * g * t * t - h) / (t * sn);
     if (!isFinite(u) || u < 0) return { ok: false, reason: `No launch speed keeps it in the air for ${d(t)} s at ${d(theta, 1)}° from ${d(h)} m.` };
     return { ok: true, u, how: M`u = (½gt^2 - h)/(t sin theta) = ${d(u)} [m s^-1]` };
   }
 
   if (have(s)) {
-    if (Math.abs(c) < EPS) return { ok: false, reason: 'A vertical launch has no horizontal displacement, so it cannot be used to find the speed.' };
+    if (Math.abs(c) < EPS) return { ok: false, reason: 'A vertical launch has no horizontal displacement, so s cannot give the speed.' };
     const denom = 2 * c * c * (h + s * Math.tan(th));
-    if (denom <= 0) return { ok: false, reason: `Nothing launched at ${d(theta, 1)}° from ${d(h)} m lands ${d(s)} m away — the geometry does not allow it.` };
+    if (denom <= 0) return { ok: false, reason: `Nothing launched at ${d(theta, 1)}° from ${d(h)} m lands ${d(s)} m away.` };
     const u = s * Math.sqrt(g / denom);
     if (!isFinite(u) || u <= 0) return { ok: false, reason: 'No launch speed fits those values.' };
     return { ok: true, u, how: `from ${M`s = ${d(s)} [m]`} at ${M`theta = ${d(theta, 1)}°`}, ${M`u = ${d(u)} [m s^-1]`}` };
@@ -240,7 +240,7 @@ function findU(theta, h, g, s, t, v) {
     return { ok: true, u, how: M`u = sqrt(v^2 - 2gh) = ${d(u)} [m s^-1]` };
   }
 
-  return { ok: false, reason: 'To find the launch speed, also give where it lands, the time of flight, or the landing speed.' };
+  return { ok: false, reason: 'To find u, also give s, t or v.' };
 }
 
 /* ── find the angle of projection ─────────────────────────────────── */
@@ -260,7 +260,7 @@ function findTheta(u, h, g, s, t) {
     const B = -s;
     const C = A - h;
     const disc = B * B - 4 * A * C;
-    if (disc < 0) return { ok: false, reason: `No angle reaches ${d(s)} m at ${d(u)} m s⁻¹ — the launch speed is too small. ${d(maxRange(u, h, g))} m is as far as it can go.` };
+    if (disc < 0) return { ok: false, reason: `No angle reaches ${d(s)} m at ${d(u)} m s⁻¹ — u is too small. ${d(maxRange(u, h, g))} m is as far as it goes.` };
     const r = Math.sqrt(disc);
     const angles = [Math.atan((-B + r) / (2 * A)) / DEG, Math.atan((-B - r) / (2 * A)) / DEG].sort((a, b) => a - b);
     return {
@@ -270,7 +270,7 @@ function findTheta(u, h, g, s, t) {
     };
   }
 
-  return { ok: false, reason: 'To find the angle of projection, also give where it lands or the time of flight.' };
+  return { ok: false, reason: 'To find the angle, also give s or t.' };
 }
 
 /** Furthest it can possibly go, at the best angle — used to explain refusals. */
@@ -394,8 +394,8 @@ function asLine(k, g, ctx, angleKnown) {
     // brings it to the ground.
     const drop = positiveUp ? Math.max(0, -vals.s) : Math.max(0, vals.s);
     h = drop;
-    if (drop > EPS) ctx.notes.push(`No launch height given, so it starts ${d(h)} m up — the height a displacement of ${d(vals.s)} m needs in order to reach the ground.`);
-    else ctx.notes.push('No launch height given, so it is taken as 0 m — launched from the ground.');
+    if (drop > EPS) ctx.notes.push(`No launch height given, so it starts ${d(h)} m up — the height a displacement of ${d(vals.s)} m needs.`);
+    else ctx.notes.push('No launch height given, so it is taken as ground level.');
   }
 
   if (!angleKnown) {
@@ -447,7 +447,7 @@ function finish(params, mode, k, ctx, lineInfo) {
       a: { value: g,          label: 'acceleration',            unit: 'm s⁻²' },
       t: { value: f.tFlight,  label: 'time of flight',          unit: 's' },
     };
-    ctx.convention = 'Displacement is measured horizontally from the launch point; u and v are speeds.';
+    ctx.convention = 's is measured horizontally from the launch. u and v are speeds.';
   } else {
     const up = lineInfo.up;
     const toAxis = (y) => (up ? y : -y);
@@ -497,12 +497,12 @@ function finish(params, mode, k, ctx, lineInfo) {
     let text;
     if (ctx.given.has('t')) {
       // they asked about an instant, so answer at that instant
-      text = `After ${d(q.t)} s the displacement is ${d(q.s)} m and the velocity is ${d(q.v)} m s\u207b\u00b9. ${whole}`;
+      text = `At ${d(q.t)} s: s = ${d(q.s)} m, v = ${d(q.v)} m s\u207b\u00b9. ${whole}`;
     } else {
       const times = crossingTimes(lineInfo, f, params);
       text = times.length > 1
-        ? `A displacement of ${d(q.s)} m happens twice: at ${d(times[0])} s on the way up and again at ${d(times[1])} s coming back down. ${whole}`
-        : `It reaches a displacement of ${d(q.s)} m after ${d(q.t)} s. ${whole}`;
+        ? `s = ${d(q.s)} m happens twice: at ${d(times[0])} s going up, and ${d(times[1])} s coming down. ${whole}`
+        : `It reaches s = ${d(q.s)} m after ${d(q.t)} s. ${whole}`;
     }
     moment = { t: q.t, s: q.s, v: q.v, text };
 

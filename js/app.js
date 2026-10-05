@@ -30,7 +30,7 @@ const SUVAT = [
 ];
 
 const SHOWS = [
-  { key: 'components',   label: 'Components of velocity' },
+  { key: 'components',   label: 'Velocity components' },
   { key: 'ticks',        label: 'Equal time steps' },
   { key: 'acceleration', label: 'Acceleration' },
   { key: 'apex',         label: 'Greatest height' },
@@ -41,8 +41,8 @@ const SHOWS = [
 ];
 const EXTRAS = [
   { key: 'graphs',  label: 'Graphs against time' },
-  { key: 'working', label: 'Show the working' },
-  { key: 'energy',  label: 'Kinetic energy and momentum' },
+  { key: 'working', label: 'The working' },
+  { key: 'energy',  label: 'Energy and momentum' },
 ];
 
 const state = {
@@ -144,11 +144,11 @@ function buildValuesScreen() {
   if (!scenario.noAngle && !scenario.lockAngle) {
     rows.push(`<div class="xrow" data-x="theta"><label for="x-theta">Angle of projection θ (°)</label>
       <input id="x-theta" type="number" step="any" value="${state.theta ?? ''}" placeholder="—">
-      <p class="xhint">Optional. Leave it blank if the question does not give it.</p></div>`);
+      <p class="xhint">Optional.</p></div>`);
   }
   rows.push(`<div class="xrow" data-x="h"><label for="x-h">Launch height h (m)</label>
     <input id="x-h" type="number" step="any" value="${state.h ?? ''}" placeholder="—">
-    <p class="xhint">Optional. Blank means it works the height out, or takes the ground.</p></div>`);
+    <p class="xhint">Optional. Blank means ground level, or it works the height out.</p></div>`);
   rows.push(`<div class="xrow"><label>Gravitational field</label><div class="chips" id="g-chips">${
     GRAVITY.map((x) => `<button class="chip" data-g="${x.g}" aria-pressed="${state.given.g === x.g}">${x.label} ${x.g}</button>`).join('')
   }</div></div>`);
@@ -195,15 +195,17 @@ function recompute() {
   const msg = $('solve-msg'), btn = $('launch');
 
   if (!solved.ok) {
-    msg.dataset.ok = 'false'; msg.textContent = solved.reason;
+    // Typeset maths arrives as markup, so every sink that can receive it takes
+    // innerHTML. textContent here prints the tags at the student. See CLAUDE.md.
+    msg.dataset.ok = 'false'; msg.innerHTML = solved.reason;
     $('notes').innerHTML = '';
     btn.disabled = true; btn.textContent = 'Launch';
-    $('launch-hint').textContent = 'Fill in enough for the engine to pin the motion down.';
+    $('launch-hint').textContent = '';
     traj = null; return;
   }
 
   msg.dataset.ok = 'true';
-  msg.textContent = solved.derived.length
+  msg.innerHTML = solved.derived.length
     ? `Ready. The rest comes out as:  ${solved.derived.join('  ·  ')}`
     : 'Everything needed is here.';
   showDerived(solved);
@@ -296,7 +298,7 @@ function renderResolve(R) {
   $('canvas-wrap').dataset.resolve = R ? 'on' : 'off';
   if (!R) { box.hidden = true; return; }
 
-  $('res-title').textContent = `At t = ${fmt(R.t, 2)} s`;
+  $('res-title').innerHTML = `At ${M`t = ${fmt(R.t, 2)} [s]`}`;
 
   const row = (q, part) => `
     <div class="rrow" data-part="${part}">
@@ -314,10 +316,10 @@ function renderResolve(R) {
   $('res-blocks').innerHTML = block(R.velocity) + block(R.displacement);
 
   $('res-note').textContent = R.vertical
-    ? 'The motion is vertical, so there is no horizontal component. Drag the time slider to watch the vertical one change.'
+    ? 'Vertical motion only, so there is no horizontal component.'
     : R.after
-      ? 'Past the first bounce the launch speed and angle no longer describe this part of the flight, so the components are given as numbers. The horizontal one is still unchanged — a smooth, level floor does not alter it.'
-      : `${R.convention} Drag the time slider to watch the components change.`;
+      ? 'Past the bounce, u and θ no longer apply — so these are numbers, not formulas. The horizontal component is still unchanged.'
+      : 'Up is positive. Drag the time slider to watch these change.';
 
   // The card stands on the side the object is not on, so it never covers the
   // thing it is describing.
@@ -355,7 +357,7 @@ function renderHud() {
     left.push(b('Momentum', fmt(traj.momentum(state.t), 1), 'kg m s⁻¹'));
   }
   $('hud-left').innerHTML = left.join('');
-  $('hud-right').innerHTML = b('Time elapsed', fmt(state.t, 2), 's');
+  $('hud-right').innerHTML = b('Time', fmt(state.t, 2), 's');
   const site = siteFor(state.id);
   $('place').textContent = site.place;
   $('place-note').textContent = site.note || '';
@@ -392,7 +394,7 @@ function showDone() {
   const said = [];
   if (r.moment) said.push(r.moment.text);
   said.push(...r.notes);
-  $('done-note').textContent = said.join(' ');
+  $('done-note').innerHTML = said.join(' ');
 
   $('done').hidden = false;
 }

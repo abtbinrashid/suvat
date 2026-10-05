@@ -34,13 +34,81 @@ export function palette() {
     gridMajor: v('--grid-major', 'rgba(255,255,255,.26)'),
     axis:     v('--axis', 'rgba(255,255,255,.45)'),
     vel:      v('--vel', '#ea580c'),
+    velVec:   v('--vel-vec', '#fb923c'),
     disp:     v('--disp', '#0891b2'),
     acc:      v('--acc', '#7c3aed'),
     second:   v('--second', '#db2777'),
     mark:     v('--mark', '#16a34a'),
     good:    v('--good', '#34d399'),
     bad:     v('--bad', '#fb7185'),
+    ballHi:   v('--ball-hi', '#fffdf6'),
+    ball:     v('--ball', '#e9e1cf'),
+    ballLow:  v('--ball-low', '#8d8370'),
+    ballLine: v('--ball-line', '#241e17'),
   };
+}
+
+/* ── the object ────────────────────────────────────────────────────────
+   It is a ball, so it is drawn as one: a sphere lit from above-left, a seam
+   across it, and a rim so it holds its edge against lit grass or a night sky.
+
+   It does NOT take a quantity's hue. Colour on this site means velocity,
+   displacement or acceleration, and the ball is none of those — it is the
+   thing they are about. Drawing it in velocity orange was what made the whole
+   scene read as one colour, with the object, its path and its vector all the
+   same.
+
+   At its real 0.22 m the ball is only a few pixels across at stadium scale, so
+   below about 5 px of radius a RING in the owning quantity's hue does the
+   finding. The ring is a magnifier, not a second object: a faint fill of the
+   same hue reads as "the ball, enlarged" rather than "a circle nearby". The
+   ring is also where a second object's magenta goes, which is how two balls
+   stay told apart when both are specks.
+
+   @param r      the ball's true radius in pixels, not a minimum
+   @param ring   hue of the magnifier ring, or null for no ring
+   @param fired  before launch the ring is lighter — nothing is moving yet */
+export function ballSprite(ctx, x, y, r, { ring = null, fired = true } = {}) {
+  const P = palette();
+
+  if (r < 5 && ring) {
+    const R = Math.max(10, r + 7);
+    ctx.save(); ctx.globalAlpha = 0.16; dot(ctx, x, y, R, { fill: ring }); ctx.restore();
+    dot(ctx, x, y, R, { stroke: ring, width: fired ? 1.8 : 1.3 });
+  }
+
+  const R = Math.max(2.2, r);
+
+  // Under about 4 px across there is no room for shading; a two-tone disc is
+  // the most ball-like thing that still resolves.
+  if (R < 4) {
+    dot(ctx, x, y, R, { fill: P.ball, stroke: P.ballLine, width: 0.9 });
+    return;
+  }
+
+  ctx.save();
+  const g = ctx.createRadialGradient(x - R * 0.34, y - R * 0.38, R * 0.08, x, y, R * 1.04);
+  g.addColorStop(0, P.ballHi);
+  g.addColorStop(0.5, P.ball);
+  g.addColorStop(1, P.ballLow);
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fillStyle = g; ctx.fill();
+
+  // One seam, clipped to the sphere. Two would be a pattern; one is enough to
+  // say "ball" and it survives being 12 px across.
+  if (R >= 6) {
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(x - R * 0.2, y, R * 0.52, R * 1.1, 0.42, 0, Math.PI * 2);
+    ctx.strokeStyle = P.ballLine;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = Math.max(0.8, R * 0.09);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  dot(ctx, x, y, R, { stroke: P.ballLine, width: Math.max(0.9, R * 0.085) });
 }
 
 export const clamp = (x, a, b) => Math.min(b, Math.max(a, x));

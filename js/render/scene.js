@@ -13,7 +13,7 @@
 // axis label the student reads is in flight x; every piece of scenery is
 // placed in section u. Nothing is ever converted twice.
 
-import { fitCanvas, palette, stroke, arrow, dot, fmt, niceStep, clamp, labels, cssVar } from './util.js';
+import { fitCanvas, palette, stroke, arrow, dot, ballSprite, fmt, niceStep, clamp, labels, cssVar } from './util.js';
 import { createCamera3D } from './grid.js';
 import { slice, siteFor, siteMap, deckProfile } from '../world/world.js';
 import { D } from '../world/dims.js';
@@ -235,7 +235,7 @@ export function render(canvas, cam, o) {
     const t2 = clamp(t - delay, 0, second.tMax);
     if (t >= delay) {
       const q = M(second.pos(t2));
-      ball({ ctx, scale: cam.scale }, q.x, q.y, P.second, true);
+      ballSprite(ctx, q.x, q.y, (D.prop.ball / 2) * cam.scale, { ring: P.second });
     }
     L.add(o.secondLabel || 'second object', sx(second.range), groundY - 22,
           { color: P.second, align: 'center', pri: 3, size: 17 });
@@ -251,8 +251,11 @@ export function render(canvas, cam, o) {
     // A casing in the surface colour under the path. The trajectory crosses
     // sky, lit grass, dark seating and bare earth in one stroke; without it
     // there is always some background it nearly matches.
-    stroke(ctx, flown, { color: P.surface, width: 7.6, alpha: 0.5 });
-    stroke(ctx, flown, { color: P.vel, width: 4.6 });
+    stroke(ctx, flown, { color: P.surface, width: 6.2, alpha: 0.5 });
+    // The path is where it HAS been, so it is the quieter of the two velocity
+    // shades and the thinner of the three strokes it used to share a weight
+    // with. The vector below sits on top of it in --vel-vec.
+    stroke(ctx, flown, { color: P.vel, width: 3.4 });
   }
 
   /* ── markers at equal time steps ──────────────────────────────────── */
@@ -296,7 +299,7 @@ export function render(canvas, cam, o) {
       if (Math.max(x0, x1) > 0 && Math.min(x0, x1) < w) {
         stroke(ctx, [{ x: x0, y }, { x: x1, y }], { color: P.muted, width: 2.2 });
         for (const X of [x0, x1]) stroke(ctx, [{ x: X, y: y - 6 }, { x: X, y: y + 6 }], { color: P.muted, width: 2.2 });
-        L.add(`${landed ? 'horizontal displacement' : 'travelled so far'} ${fmt(value, 2)} m`,
+        L.add(`${landed ? 'horizontal' : 'so far'} ${fmt(value, 2)} m`,
               clamp((x0 + x1) / 2, 150, w - 150), y + 18,
               { color: P.muted, align: 'center', pri: 7, size: 16, maxPush: 0 });
       }
@@ -319,15 +322,17 @@ export function render(canvas, cam, o) {
 
   if (fired && show.components) {
     const hx = p.x + v.x * vScale, vy = p.y - v.y * vScale;
-    arrow(ctx, p.x, p.y, hx, p.y, { color: P.vel, width: 2.4, head: 10, dash: [6, 5] });
-    arrow(ctx, p.x, p.y, p.x, vy,  { color: P.vel, width: 2.4, head: 10, dash: [6, 5] });
-    L.add(`horizontal ${fmt(v.x, 1)}`, hx + 8, p.y + 16, { color: P.vel, pri: 4, maxPush: 40, size: 17 });
-    L.add(`vertical ${fmt(v.y, 1)}`, p.x + 10, vy - 14, { color: P.vel, pri: 4, maxPush: 40, size: 17 });
+    arrow(ctx, p.x, p.y, hx, p.y, { color: P.velVec, width: 1.9, head: 10, dash: [6, 5] });
+    arrow(ctx, p.x, p.y, p.x, vy,  { color: P.velVec, width: 1.9, head: 10, dash: [6, 5] });
+    L.add(`horizontal ${fmt(v.x, 1)}`, hx + 8, p.y + 16, { color: P.velVec, pri: 4, maxPush: 40, size: 17 });
+    L.add(`vertical ${fmt(v.y, 1)}`, p.x + 10, vy - 14, { color: P.velVec, pri: 4, maxPush: 40, size: 17 });
   }
   if (fired && show.velocity && !resolve) {
     const ex = p.x + v.x * vScale, ey = p.y - v.y * vScale;
-    arrow(ctx, p.x, p.y, ex, ey, { color: P.vel, width: 4, head: 16 });
-    L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, ex + 12, ey - 12, { color: P.vel, pri: 10, weight: 600, size: 19 });
+    // Thinner than the path it is leaving behind, and a shade apart from it:
+    // a long shaft with a big head reads as a vector, a fat one reads as a pipe.
+    arrow(ctx, p.x, p.y, ex, ey, { color: P.velVec, width: 2.3, head: 14 });
+    L.add(`velocity ${fmt(Math.hypot(v.x, v.y), 2)} m s⁻¹`, ex + 12, ey - 12, { color: P.velVec, pri: 10, weight: 600, size: 19 });
   }
   if (fired && show.acceleration && f.params.g > 0) {
     const len = clamp(f.params.g * vScale * 0.5, 14, 60);
@@ -335,7 +340,7 @@ export function render(canvas, cam, o) {
     L.add(`g ${fmt(f.params.g, 2)} m s⁻²`, p.x - 10, p.y + len + 4, { color: P.acc, align: 'right', pri: 5, size: 17 });
   }
 
-  ball({ ctx, scale: cam.scale }, p.x, p.y, P.vel, fired);
+  ballSprite(ctx, p.x, p.y, (D.prop.ball / 2) * cam.scale, { ring: P.vel, fired });
 
   /* ── resolving, at the instant that was clicked ───────────────────── */
   if (fired && resolve) {
@@ -350,7 +355,7 @@ export function render(canvas, cam, o) {
         color: P.disp, width: 2.4, alpha: 0.95, pri: 12,
         labelX: `horizontal ${fmt(resolve.sx, 1)} m`,
         labelY: `vertical ${fmt(resolve.sy, 1)} m`,
-        labelR: `${fmt(resolve.dist, 1)} m from the launch`,
+        labelR: `${fmt(resolve.dist, 1)} m from launch`,
       });
     }
 
@@ -359,13 +364,13 @@ export function render(canvas, cam, o) {
       : vScale;
     if (resolve.vertical) {
       // No horizontal part means no triangle. One arrow, and say why.
-      arrow(ctx, p.x, p.y, p.x, p.y - v.y * rs, { color: P.vel, width: 4.4, head: 16 });
-      L.add(`vertical ${fmt(v.y, 1)} m s⁻¹ · no horizontal component`,
-            p.x + 14, p.y - (v.y * rs) / 2, { color: P.vel, pri: 16, size: 17, weight: 600 });
+      arrow(ctx, p.x, p.y, p.x, p.y - v.y * rs, { color: P.velVec, width: 2.6, head: 14 });
+      L.add(`vertical ${fmt(v.y, 1)} m s⁻¹ · no horizontal part`,
+            p.x + 14, p.y - (v.y * rs) / 2, { color: P.velVec, pri: 16, size: 17, weight: 600 });
     } else {
       resolveTriangle(ctx, L, {
         x0: p.x, y0: p.y, dx: v.x * rs, dy: -v.y * rs,
-        color: P.vel, width: 3.4, pri: 16, angle: resolve.velocity.angle,
+        color: P.velVec, width: 2.4, pri: 16, angle: resolve.velocity.angle,
         labelX: `horizontal ${fmt(v.x, 1)} m s⁻¹`,
         labelY: `vertical ${fmt(v.y, 1)} m s⁻¹`,
         labelR: `${fmt(resolve.speed, 2)} m s⁻¹ at ${fmt(resolve.velocity.angle, 1)}°`,
@@ -448,23 +453,6 @@ function resolveTriangle(ctx, L, A) {
   if (labelR) L.add(labelR, tx + (dx > 0 ? 14 : -14), ty + (dy > 0 ? 16 : -16),
                     { color, align: dx > 0 ? 'left' : 'right', pri: pri + 2, size: 18, weight: 700 });
 }
-
-/* ── the ball, to scale, with a ring so it never disappears ──────────── */
-function ball(A, X, Y, col, fired) {
-  const { ctx, scale } = A;
-  const r = (D.prop.ball / 2) * scale;
-  // Below about 10 px across, a 0.22 m ball is a speck. The ring is a
-  // magnifier, not a second object — so it carries a faint fill of the same
-  // hue, which reads as "the ball, enlarged" rather than "a circle nearby".
-  if (r < 5) {
-    const R = Math.max(10, r + 7);
-    ctx.save(); ctx.globalAlpha = 0.16; dot(ctx, X, Y, R, { fill: col }); ctx.restore();
-    dot(ctx, X, Y, R, { stroke: col, width: fired ? 1.8 : 1.3 });
-  }
-  dot(ctx, X, Y, Math.max(1.8, r), { fill: col });
-  if (r >= 5) dot(ctx, X, Y, r, { stroke: P0(col), width: 1.2 });
-}
-const P0 = (c) => c;
 
 /* ── the metre grid, as an optional overlay ──────────────────────────── */
 function metreGrid({ ctx, w, h, su, sy, pu, py, cam, P, L, u0 }) {
