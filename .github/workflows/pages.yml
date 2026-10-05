@@ -1,0 +1,50 @@
+# Deploy the site to GitHub Pages.
+#
+# There is nothing to build: no bundler, no dependencies, no Jekyll. The repo
+# IS the site, so this uploads it as it stands. It replaces the legacy
+# branch-deploy builder, which failed three times running and reported only
+# "Page build failed." with no log to work from.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The physics, the solver, the question reader, the scenarios, and the
+      # sweep that fails if any computer maths can reach a student. Nothing
+      # goes live without all five passing.
+      - run: for t in test/*.test.mjs; do node "$t" || exit 1; done
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
