@@ -22,7 +22,7 @@ import { PALM_H } from './exhibit.js';
 
 export const EXTENT = {
   warehouse: { x0: -4.5, x1: 9, yTop: 2.4 },   // room at the left for the rig
-  beach:     { x0: -3, x1: 16, yTop: 13 },
+  beach:     { x0: -2.5, x1: 7, yTop: 12 },   // the content widens it from here
 };
 
 /* ── shared marks ──────────────────────────────────────────────────────── */
@@ -41,6 +41,8 @@ const rnd = (i) => { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Ma
    go. A test range is a dark room with one lamp, and every object that is not
    the two bullets is competition. */
 
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
 export function warehouseBack(g, S, box, o) {
   const { PLATE } = o;
   const gy = S.groundY;
@@ -57,6 +59,13 @@ export function warehouseBack(g, S, box, o) {
     if (X < box.x || X > box.x + box.w) continue;
     g.strokeStyle = PLATE.ruleFaint; g.lineWidth = 1;
     g.beginPath(); g.moveTo(X, gy); g.lineTo(X, gy + 9); g.stroke();
+    // Label them. Evenly spaced ticks on an axis squeezed 32x read as metres
+    // unless they say what they are.
+    if (x > 0 && X < box.x + box.w - 150) {
+      g.font = `500 12px ${getComputedStyle(document.documentElement).getPropertyValue('--font') || 'system-ui'}`;
+      g.fillStyle = PLATE.inkFaint; g.textAlign = 'center'; g.textBaseline = 'top';
+      g.fillText(`${x} m`, X, gy + 12);
+    }
   }
   g.restore();
 
@@ -90,7 +99,8 @@ function rig(g, S, o, PLATE) {
   const bar = grad(g, 0, y - bore, 0, y + bore,
     [[0, PLATE.leadHi], [0.3, PLATE.lead], [1, PLATE.leadLo]]);
   g.fillStyle = bar;
-  g.fillRect(x - m(3.4), y - bore * 0.5, m(3.4), bore);
+  g.fillRect(Math.max(S.X(EXTENT.warehouse.x0) + 8, x - m(3.4)), y - bore * 0.5,
+             x - Math.max(S.X(EXTENT.warehouse.x0) + 8, x - m(3.4)), bore);
   // muzzle brake: three ports and a crown
   g.fillStyle = PLATE.leadLo;
   for (let i = 1; i <= 3; i++) g.fillRect(x - m(0.12) * i * 2.2, y - bore * 0.5, m(0.07), bore * 0.42);
@@ -105,19 +115,23 @@ function rig(g, S, o, PLATE) {
   g.fillRect(x - m(0.16), cy - m(0.1), m(0.32), m(0.1));
 
   // MUZZLE FLASH — two frames at 60 fps, which is all a real one lasts.
+  //
+  // Sized in SCREEN PIXELS, not metres. The vertical scale on this plate is
+  // enormous (the whole frame is about two metres tall), so a flash measured
+  // in metres came out as a white star across a quarter of the picture.
   if (o.fired && o.t < 0.1) {
-    const k = 1 - o.t / 0.1, r = bore * (2 + 7 * k);
+    const k = 1 - o.t / 0.1, r = 7 + 13 * k;
     g.save(); g.globalAlpha = k;
-    const gl = g.createRadialGradient(x, y, 0, x, y, r * 3.4);
-    gl.addColorStop(0, 'rgba(255,244,214,0.95)');
+    const gl = g.createRadialGradient(x, y, 0, x, y, r * 2.6);
+    gl.addColorStop(0, 'rgba(255,244,214,0.88)');
     gl.addColorStop(0.35, 'rgba(255,214,128,0.42)');
     gl.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = gl; g.beginPath(); g.arc(x, y, r * 3.4, 0, Math.PI * 2); g.fill();
+    g.fillStyle = gl; g.beginPath(); g.arc(x, y, r * 2.6, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(255,248,226,0.92)';
     g.beginPath();
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      const rr = (i % 2 ? r * 0.34 : r * (0.75 + rnd(i) * 0.55)) * (i < 4 || i > 8 ? 1.5 : 0.8);
+      const rr = (i % 2 ? r * 0.38 : r * (0.8 + rnd(i) * 0.4)) * (i < 4 || i > 8 ? 1.25 : 0.85);
       const px = x + Math.cos(a) * rr * 1.6, py = y + Math.sin(a) * rr;
       i ? g.lineTo(px, py) : g.moveTo(px, py);
     }
@@ -234,15 +248,21 @@ function palm(g, S, target, PLATE) {
   }
   // THE BRANCH IT LETS GO OF. Without it the monkey hangs in mid-air and the
   // one thing the scenario turns on — that it was holding something — is lost.
+  // It has to START ON THE TRUNK, or it reads as a frond floating in mid-air.
+  // Walk the same quadratic the trunk is drawn along to find where the trunk
+  // actually is at the monkey's height.
+  const kT = clamp((botY - S.Y(target.y + 0.42)) / (botY - topY || 1), 0, 1);
+  const cxT = S.X(CX + 1.5);
+  const trunkX = (1 - kT) * (1 - kT) * botX + 2 * (1 - kT) * kT * cxT + kT * kT * topX;
   const by = S.Y(target.y + 0.42);
-  g.strokeStyle = '#4a3a2a'; g.lineWidth = Math.max(2, m(0.18)); g.lineCap = 'round';
-  g.beginPath(); g.moveTo(S.X(CX), by + m(0.3));
-  g.quadraticCurveTo(S.X((CX + target.x) / 2), by - m(0.25), S.X(target.x - 0.35), by);
+  g.strokeStyle = '#4a3a2a'; g.lineWidth = Math.max(2, m(0.16)); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(trunkX, by + m(0.25));
+  g.quadraticCurveTo((trunkX + S.X(target.x)) / 2, by - m(0.3), S.X(target.x - 0.3), by);
   g.stroke();
-  g.strokeStyle = '#2d5c3f'; g.lineWidth = Math.max(1.2, m(0.1));
-  for (let i = 0; i < 4; i++) {                 // a few leaves on it
-    const k = 0.3 + i * 0.18, lx = S.X(CX + (target.x - CX) * k), ly = by - m(0.12);
-    g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx - m(0.2), ly - m(0.45)); g.stroke();
+  g.strokeStyle = '#2d5c3f'; g.lineWidth = Math.max(1.2, m(0.09));
+  for (let i = 0; i < 3; i++) {                 // a few leaves, on the branch
+    const k = 0.35 + i * 0.2, lx = trunkX + (S.X(target.x) - trunkX) * k;
+    g.beginPath(); g.moveTo(lx, by - m(0.05)); g.lineTo(lx - m(0.18), by - m(0.4)); g.stroke();
   }
 
   // coconuts

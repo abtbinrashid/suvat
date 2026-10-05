@@ -172,7 +172,7 @@ export function render(canvas, cam, o) {
 
   /* ── ground line ──────────────────────────────────────────────────── */
   g.strokeStyle = PLATE.rule; g.lineWidth = 1.4;
-  g.beginPath(); g.moveTo(box.x, S.groundY + 0.5); g.lineTo(box.x + box.w, S.groundY + 0.5); g.stroke();
+  g.beginPath(); g.moveTo(box.x, S.groundY + 3.5); g.lineTo(box.x + box.w, S.groundY + 3.5); g.stroke();
 
   /* ── height rule down the right ───────────────────────────────────── */
   const rx = box.x + box.w - 30;
@@ -183,7 +183,7 @@ export function render(canvas, cam, o) {
     const major = Math.abs(y / stepY - Math.round(y / stepY)) < 1e-9;
     g.beginPath(); g.moveTo(rx - (major ? 9 : 5), S.Y(y)); g.lineTo(rx, S.Y(y)); g.stroke();
     if (major && y > 0) text(g, rx - 13, S.Y(y), `${fmt(y, stepY < 1 ? 1 : 0)} m`,
-                            { align: 'right', size: 13, col: PLATE.inkFaint });
+                            { align: 'right', size: 13, col: PLATE.inkMid });
   }
 
   /* ── the exposures ────────────────────────────────────────────────── */
@@ -209,11 +209,19 @@ export function render(canvas, cam, o) {
                          Math.abs(S.X(f.pos(dt0).x) - S.X(0)));
   const Lbul = clamp(gapPx * 0.72, 9, scenario.backdrop === 'beach' ? 30 : 20);
   const pair = [];                                      // [firedPos, droppedPos] per flash
-  // An object that barely moves between flashes stacks its exposures into a
-  // smear. Keep the first, the last and anything far enough from its
-  // predecessor to still read as a separate frame.
-  let lastDrawnA = null, lastDrawnB = null;
-  const apart = (p, q, min) => !q || Math.hypot(p.x - q.x, p.y - q.y) >= min;
+
+  // THINNING MUST NOT FLATTEN THE ACCELERATION.
+  //
+  // Dropping exposures that fall within some distance of the last one drawn
+  // produces a column of EVENLY spaced images — which is a picture of
+  // constant velocity, and a lie about the one thing the plate is for. Thin
+  // by taking every k-th flash instead: gaps under free fall go as 1, 3, 5, 7
+  // and a stride multiplies them all by k², so the signature survives intact.
+  const firstDrop = second
+    ? Math.abs(S.Y(second.pos(Math.min(dt, second.tMax)).y) - S.Y(second.pos(0).y))
+    : Infinity;
+  let stride = 1;
+  while (stride < 8 && firstDrop * stride * stride < 7 && shots.length / (stride + 1) > 4) stride++;
 
   for (let i = 0; i < shots.length; i++) {
     const ti = shots[i];
@@ -226,9 +234,8 @@ export function render(canvas, cam, o) {
     const px = S.X(p.x), py = S.Y(p.y);
     const ang = Math.atan2(-(S.Y(v.y) - py), S.X(v.x) - px);
 
-    const showA = last || i === 0 || apart({ x: px, y: py }, lastDrawnA, Lbul * 0.62);
+    const showA = last || i % stride === 0;
     if (showA) {
-      lastDrawnA = { x: px, y: py };
       g.save(); g.globalAlpha = a;
       halo(g, px, py, Lbul * (last ? 1.7 : 1.1));
       if (scenario.backdrop === 'beach') bananaOrMonkey(g, px, py, Lbul, ang, last, true);
@@ -241,8 +248,8 @@ export function render(canvas, cam, o) {
       const q = second.pos(Math.min(ti, second.tMax));
       const qx = S.X(q.x), qy = S.Y(q.y);
       const Lsec = scenario.backdrop === 'beach' ? Math.max(Lbul, 26) : Lbul;
-      if (last || i === 0 || apart({ x: qx, y: qy }, lastDrawnB, Lsec * 0.62)) {
-        lastDrawnB = { x: qx, y: qy }; drewB = true;
+      if (last || i % stride === 0) {
+        drewB = true;
         g.save(); g.globalAlpha = a;
         halo(g, qx, qy, Lsec * (last ? 1.7 : 1.1));
         if (scenario.backdrop === 'beach') bananaOrMonkey(g, qx, qy, Lsec, Math.PI / 2, last, false);
@@ -274,11 +281,10 @@ export function render(canvas, cam, o) {
     if (verdict?.kind === 'short' && done) {
       // It fell short. Saying "same fall" here would be a lie: the monkey
       // stopped falling the moment it hit the sand.
+      labelPair(g, pair, last, scenario, box);          // the lines still mean something
       pill(g, box.x + box.w / 2, box.y + 56, verdict.text, 14);
     } else if (last?.b && gap > 90) {
-      const mid = pair.filter((s) => s.b && s.drawn && Math.abs(s.a.x - s.b.x) > 110);
-      const s = mid.length ? mid[Math.floor(mid.length * 0.45)] : last;
-      pill(g, (s.a.x + s.b.x) / 2, s.a.y, scenario.pairLabel || 'same height');
+      labelPair(g, pair, last, scenario, box);
     } else if (last?.b && gap < 14 && done) {
       // they have met. Say so where it happened, not in a corner.
       const cx = (last.a.x + last.b.x) / 2, cy = (last.a.y + last.b.y) / 2;
@@ -299,9 +305,9 @@ export function render(canvas, cam, o) {
   const real = isFinite(f.range) ? f.range : f.horiz * f.tMax;
   const foot = S.kx < 0.92
     ? `Sideways squeezed ${fmt(1 / S.kx, 1)}× to fit — the real path is far flatter than this · range ${fmt(real, 0)} m`
-    : `1 unit = 1 m on both axes · range ${fmt(real, 1)} m`;
-  text(g, box.x + box.w - 14, box.y + box.h - 16, foot, { align: 'right', size: 13, col: PLATE.inkFaint });
-  text(g, box.x + box.w - 14, box.y + 18, `Flash every ${fmt(dt, dt < 0.1 ? 3 : 2)} s`,
+    : `No squeeze — 1 m is 1 m both ways · range ${fmt(real, 1)} m`;
+  text(g, box.x + box.w - 14, box.y + box.h - 16, foot, { align: 'right', size: 13, col: PLATE.inkMid });
+  text(g, box.x + box.w - 14, box.y + 18, `Flash every ${fmt(dt * stride, dt * stride < 0.1 ? 3 : 2)} s`,
        { align: 'right', size: 13, col: PLATE.inkFaint });
 
   g.restore();                                          // the plate clip
@@ -309,6 +315,18 @@ export function render(canvas, cam, o) {
   cam._stage = S;
   L.draw(g, w, h);
   return { sx: S.X, sy: S.Y };
+}
+
+/** Put the pair label on a mid-flight pair, on a leader, clear of the lines. */
+function labelPair(g, pair, last, scenario, box) {
+  const mid = pair.filter((s) => s.b && s.drawn && Math.abs(s.a.x - s.b.x) > 110);
+  const s = mid.length ? mid[Math.floor(mid.length * 0.45)] : last;
+  if (!s?.b) return;
+  const cx = (s.a.x + s.b.x) / 2, cy = s.a.y;
+  const ly = clamp(cy - 46, box.y + 30, box.y + box.h - 30);
+  g.save(); g.globalAlpha = 0.55; g.strokeStyle = PLATE.ink; g.lineWidth = 1.1;
+  g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx, ly + 13); g.stroke(); g.restore();
+  pill(g, cx, ly, scenario.pairLabel || 'same height');
 }
 
 /** On the beach the projectile is a banana and the second object is a monkey. */
