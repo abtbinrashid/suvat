@@ -200,7 +200,7 @@ export const D = {
   lod: {
     bands: { pitch: 30, stadium: 300, district: 2000 },
     netMesh: 260, grassBlades: 24, people: 460, boardPanels: 260,
-    pitchLines: 900, players: 340, seatRows: 130, seatTexture: 440,
+    pitchLines: 900, seatRows: 130, seatTexture: 440,
     roofCables: 950, floodDetail: 760, carParkBays: 950, cars: 1900,
     treeDetail: 1200, treeBlob: 3400, houseDetail: 1500, houseBlock: 4200,
     grassStripes: 1000, roadLines: 1100,

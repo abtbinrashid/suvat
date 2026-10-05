@@ -293,6 +293,104 @@ into a haze band.
 **Streets, not runways.** Terraces are built in 88 m blocks with 11 m cross
 streets between them. One unbroken six-hundred-metre ridge read as a runway.
 
+## The model, gone over again
+
+A second pass, after the first one had been looked at properly. Six things.
+
+**The pitch had twenty-three people standing on it.** A kick-off formation,
+drawn as 1.8 m cards. At the size the touchline camera sees them, a figure is
+about as big as the velocity arrow and about as dark — so the one thing on
+screen a student is meant to follow had twenty-three decoys of the same size
+scattered across the ground it has to cross. They are gone: no players, no
+keepers, no referee. The scale references that remain are all outside the
+bowl, where nothing has to be read through them — the crowd in the stands, the
+cars on the road, the people on the podium. The corner flags stay, because a
+flag is 1.5 m and does not move.
+
+**Every quad had a crack down its edge.** A canvas antialiases each polygon
+edge against whatever is already behind it, so two faces sharing an edge leave
+a half-covered hairline between them — and a bowl made of several thousand
+faces turned into crazed porcelain. An opaque face is now stroked with its own
+fill colour, which puts the half-pixel back. This is the single change that
+made the model read as a surface rather than as a mesh. It is skipped on
+translucent faces, where a stroke would double the coverage along the edge and
+draw the mesh back on in outline, and on faces under about fourteen pixels of
+girth, where the crack is narrower than the antialiasing either side of it and
+sealing it costs a second raster pass for nothing.
+
+**The inside of the bowl was bands of mud.** The flat concourse runs and the
+balcony fronts were both taking `--structure-dark`, which is the poché tone —
+the colour of CUT material in the section drawing, and quite wrong for a wall
+you are looking AT. In every stadium ever built the balcony front is pale
+concrete. It is pale concrete here now, with the concourse behind each tier
+the same material in shadow, and nothing else in the bowl bright: an early
+attempt that also lit the gangways turned the stand into tartan and left the
+seating as the gaps in a grid. The seating itself takes the row rhythm — a
+seat back catches the light, the tread in front of it does not — instead of
+the two broad bands of grey it had, which read as geology.
+
+**The stairs are a known width.** Eighteen vomitories climb the rake, and they
+are most of why a photograph of a stand tells you how big it is: a known 2.6 m
+against an unknown wall of seats. They are laid as their own strips rather
+than as columns of the bowl mesh, because a column is 2.8 m wide at the front
+row and 5 m at the back, and a flight of steps that widens as it climbs is the
+one thing on this model nobody would believe.
+
+**A car was a loaf of bread.** Two stacked boxes. It is eleven boxes now —
+four wheels, a body sitting clear of the road, and a glasshouse set in on all
+four sides and set back along the length so the thing has a bonnet — and a bus
+has its two decks of windows. Both only for cars big enough on screen to be
+worth it; past that it is the body and the glasshouse, and past that one card.
+A tree was a balloon on a stick: it has a box trunk that takes the same light
+as everything else, and a crown of three overlapping lobes in three greens.
+The dugout was a pane of blue glass hanging at the touchline; it is a solid
+back with a glass canopy over it. The goal net was a box of frosted glass and
+is now the mesh it actually is, on the back, both sides and the roof of the
+net, at 0.9 m squares — reverting to the translucent box past 170 m, where the
+squares would be finer than a pixel. Terraced houses within 320 m have two
+floors of windows at one pair per 5.5 m frontage, lit from inside at night
+with a quarter of them dark.
+
+**The roof was a tarpaulin.** The ring is finer, the fascia and soffit shade
+across each ring rather than stepping at it, the inner third is the brighter
+material a cable-net roof really is where it has to let light onto the grass,
+and the radial cables stopped being dark gashes. The soffit is no longer close
+to black: it is a dark surface being bounced into by a lit pitch, and it
+brightens towards the opening. The outside of the bowl gained a plinth, the
+glazed concourse that rings every modern stadium, and a panelled upper facade
+whose bay rhythm is a change of VALUE rather than of material — alternating
+two tones across whole bays chopped the elevation into a chequerboard that was
+visible from inside the bowl, over the roof.
+
+### What it costs
+
+Measured in the same tab, same view, same canvas, against the previous commit.
+
+| | before | after |
+| --- | --- | --- |
+| frame during a flight | 0.51 ms | 0.52 ms |
+| frame while orbiting | 5.4–6.1 ms | 6.4–9.3 ms |
+| the one repaint when the camera stops | 28–33 ms | 49–54 ms |
+
+The frame that matters — the one that runs sixty times a second while the ball
+is in the air — is unchanged, because the scenery is still painted once into
+an offscreen bitmap and blitted after that. Orbiting still has eight times the
+headroom it needs. The repaint when the camera stops is the price of the finer
+bowl and roof; it happens once, and what the user sees is the coarse model
+sharpening, not a stutter. The roof was taken back from 120 segments to 96 and
+from ten rings to eight when the first version of this pass put that repaint
+at 75 ms.
+
+### Two stale references, fixed
+
+`tools/dimension-sheet.mjs` and `tools/launch-map.mjs` were still reading
+`D.roof.ringA` / `ringB` — the semi-axes of an elliptical roof opening that
+stopped existing when the roof and the bowl were made to share one
+rounded-rectangle family. The sheet had been printing `undefined × undefined`
+and `NaN × NaN`, and the map had been drawing an ellipse with `rx="NaN"`. Both
+now derive the opening from the front row inset by `roof.ringInset`, which is
+what the renderer does: 120 × 80 m. `D.lod.players` went with the players.
+
 ## What did not change
 
 `js/core/` — `projectile.js`, `trajectory.js`, `suvat.js`, `solve.js`,

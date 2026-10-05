@@ -105,8 +105,9 @@ tbl(['Object', 'Dimension', 'Value (m)'], [
   ['Outer fascia', 'bottom edge', f(D.roof.fasciaBottom, 1)],
   ['Roof plane', 'at the outer structure line', f(D.roof.outerStructure, 1)],
   ['Compression ring', 'top / bottom', `${f(D.roof.ringTop, 1)} / ${f(D.roof.ringBottom, 1)}`],
-  ['Roof opening', 'semi-axes a × b', `${D.roof.ringA} × ${D.roof.ringB}`],
-  ['Roof opening', 'full size', `${D.roof.ringA * 2} × ${D.roof.ringB * 2}`],
+  ['Roof opening', 'the front row inset by', `${D.roof.ringInset}`],
+  ['Roof opening', 'along the pitch × across it',
+   `${(D.sides.W.front - D.roof.ringInset) * 2} × ${(D.sides.NS.front - D.roof.ringInset) * 2}`],
   ['Floodlight strip', 'height, width', `${f(D.roof.lightStripY, 1)}, ${D.roof.lightStripW}`],
   ['Cables', 'radial / hoop', `${D.roof.radialCables} / ${D.roof.hoopCables}`],
 ]);

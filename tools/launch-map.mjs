@@ -63,7 +63,13 @@ function panel({ cx, cy, px, py, pw, ph, ext, detail }) {
       put(`<rect x="${X(Math.min(gl, gl - s * P.goalAreaDepth)).toFixed(1)}" y="${Z(-P.goalAreaHalfW).toFixed(1)}" width="${(P.goalAreaDepth * S).toFixed(1)}" height="${(P.goalAreaHalfW * 2 * S).toFixed(1)}" fill="none" stroke="#fff" stroke-width="${w}"/>`);
       put(`<rect x="${X(Math.min(gl, gl + s * D.goal.netDepth)).toFixed(1)}" y="${Z(-D.goal.width / 2).toFixed(1)}" width="${(D.goal.netDepth * S).toFixed(1)}" height="${(D.goal.width * S).toFixed(1)}" fill="#fff" opacity="0.65"/>`);
     }
-    put(`<ellipse cx="${X(0).toFixed(1)}" cy="${Z(0).toFixed(1)}" rx="${(D.roof.ringA * S).toFixed(1)}" ry="${(D.roof.ringB * S).toFixed(1)}" fill="none" stroke="#6f6a62" stroke-dasharray="7 5" stroke-width="1.4"/>`);
+    // The opening is the front row's own plan, inset — not an ellipse. It
+    // stopped being one when the roof and the bowl were made to share a
+    // single rounded-rectangle family, and this was still drawing the
+    // ellipse it used to be, with radii that no longer exist.
+    const ri = D.roof.ringInset;
+    put(`<path d="${roundedRect(D.sides.W.front - ri, D.sides.NS.front - ri, D.bowl.frontR - ri)
+      .map((q, i) => `${i ? 'L' : 'M'}${X(q.x).toFixed(1)} ${Z(q.z).toFixed(1)}`).join(' ')} Z" fill="none" stroke="#6f6a62" stroke-dasharray="7 5" stroke-width="1.4"/>`);
   }
   put('</g>');
   put(`<rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="none" stroke="#c9c4bc" rx="12"/>`);

@@ -131,7 +131,21 @@ class Faces {
     const fill = flat
       ? shade(tone, 1 + lift, a2)
       : light2(tone, nk + lift, nf, this.warm, this.cool, a2);
-    const face = { scr, fill, line, lw, depth };
+    // SEAL THE SEAM. A canvas antialiases every polygon edge against whatever
+    // is already behind it, so two quads sharing an edge leave a half-covered
+    // hairline between them — and a bowl made of nine thousand quads turns
+    // into crazed porcelain. Stroking an opaque face with its own fill colour
+    // puts that half-pixel back. It is the single thing that makes the model
+    // read as a surface instead of a mesh. A translucent face is left alone:
+    // stroking it would double its coverage along the edge and draw the mesh
+    // back on in outline.
+    // …but only where a seam could be seen. Below about fourteen pixels of
+    // girth the crack is narrower than the antialiasing either side of it,
+    // and sealing every one of nine thousand faces costs a second raster
+    // pass for nothing. Measured: 21.5 ms a frame while orbiting with the
+    // gate off, 14.8 ms with it on.
+    const girth = (maxX - minX) + (maxY - minY);
+    const face = { scr, fill, line, lw, depth, seam: !line && a2 >= 0.995 && girth > 14 };
     if (ground) this.g.push(face); else this.q.push(face);
   }
   /** A line in space — cables, kerbs, pitch markings. */
@@ -155,6 +169,7 @@ class Faces {
       if (!f.open) {
         ctx.closePath();
         ctx.fillStyle = f.fill; ctx.fill();
+        if (f.seam) { ctx.strokeStyle = f.fill; ctx.lineWidth = 1; ctx.lineJoin = 'round'; ctx.stroke(); }
       }
       if (f.line) { ctx.strokeStyle = f.line; ctx.lineWidth = f.lw; ctx.lineJoin = 'round'; ctx.stroke(); }
     }
@@ -167,6 +182,53 @@ const CAR_TONES = ['carA', 'carB', 'carC', 'carD', 'carE'];
 const carTone = (tn, v) => tn[CAR_TONES[Math.floor((v || 0) * CAR_TONES.length) % CAR_TONES.length]] || tn.prop;
 const wallTone = (tn, h) => [tn.brick, tn.render, tn.brick, tn.panel][h % 4];
 const P = (x, y, z) => ({ x, y, z });
+
+/* ── a car that reads as a car ───────────────────────────────────────
+   Two stacked boxes gave a loaf of bread. What makes the silhouette is the
+   wheels under it, a body that sits clear of the road, and a glasshouse set
+   in on all four sides AND set back along the length, so the thing has a
+   bonnet. Eleven boxes instead of two, drawn only for cars big enough on
+   screen to be worth it; everything further away stays one card. */
+function car3D(F, tn, x, z, y, B, along, paint, alpha) {
+  const ha = B.l / 2, hb = B.w / 2, H = B.h;
+  // a is measured along the car, b across it — so one body of code serves
+  // both orientations and the two can never drift apart
+  const put = (a0, a1, b0, b1, y0, y1, tone, al) => {
+    const s = along ? { x0: x + a0, x1: x + a1, z0: z + b0, z1: z + b1 }
+                    : { x0: x + b0, x1: x + b1, z0: z + a0, z1: z + a1 };
+    boxFaces(F, { ...s, y0: y + y0, y1: y + y1 }, tone, al);
+  };
+  for (const sa of [-1, 1]) {
+    for (const sb of [-1, 1]) {
+      const ca = sa * (ha - 0.78);
+      put(ca - 0.33, ca + 0.33, sb * hb - sb * 0.10 - 0.11, sb * hb - sb * 0.10 + 0.11,
+          0, 0.33, tn.tyre, alpha);
+    }
+  }
+  put(-ha, ha, -hb, hb, 0.26, H * 0.60, paint, alpha);                       // body
+  put(-ha * 0.46, ha * 0.58, -hb * 0.90, hb * 0.90, H * 0.56, H * 0.93, tn.glass, alpha);
+  put(-ha * 0.42, ha * 0.52, -hb * 0.84, hb * 0.84, H * 0.90, H, paint, alpha);  // roof
+}
+
+/* A bus is a slab, so what it needs is the window band and the deck line —
+   and it is here as a scale reference, 4.4 m tall, so it has to be legible
+   at the size a scale reference is read at. */
+function bus3D(F, tn, x, z, y, B, along, paint, alpha) {
+  const ha = B.l / 2, hb = B.w / 2, H = B.h;
+  const put = (a0, a1, b0, b1, y0, y1, tone, al) => {
+    const s = along ? { x0: x + a0, x1: x + a1, z0: z + b0, z1: z + b1 }
+                    : { x0: x + b0, x1: x + b1, z0: z + a0, z1: z + a1 };
+    boxFaces(F, { ...s, y0: y + y0, y1: y + y1 }, tone, al);
+  };
+  for (const sa of [-1, 1]) {
+    put(sa * (ha - 1.5) - 0.4, sa * (ha - 1.5) + 0.4, -hb, hb, 0, 0.42, tn.tyre, alpha);
+  }
+  put(-ha, ha, -hb, hb, 0.34, H, paint, alpha);
+  const glaze = (y0, y1) =>
+    put(-ha * 0.96, ha * 0.96, -hb - 0.03, hb + 0.03, y0, y1, tn.glass, alpha);
+  glaze(H * 0.30, H * 0.46);                 // lower deck
+  glaze(H * 0.62, H * 0.86);                 // upper deck
+}
 
 /* A quad longer than this gets split. Painter's algorithm orders whole
    polygons, so one 280 m slab can sort "far" on its centroid and still have a
@@ -206,7 +268,7 @@ function boxFaces(F, s, tone, alpha = 1, noTop = false) {
 /** A terraced row: two pitched planes and two gable ends. */
 /** A terraced row: two pitched planes, two gable ends, and — because a row is
     not one building — a party-wall rhythm at the real 5.5 m frontage. */
-function ridgeFaces(F, s, tone, roofTone, alpha = 1, detail = true) {
+function ridgeFaces(F, tn, s, tone, roofTone, alpha = 1, detail = true, win = false) {
   const { x0, x1, z0, z1, y1 } = s, e = s.eaves;
   const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
   boxFaces(F, { ...s, y1: e }, tone, alpha);
@@ -233,6 +295,39 @@ function ridgeFaces(F, s, tone, roofTone, alpha = 1, detail = true) {
       ? [P(v, e, z0), P(v, y1, mz), P(v, e, z1)]
       : [P(x0, e, v), P(mx, y1, v), P(x1, e, v)];
     F.addLine(p, tone, 1, 0.5 * alpha);
+  }
+  if (!win) return;
+  // CLOSE UP, A HOUSE HAS WINDOWS — two floors of them, one pair per 5.5 m
+  // frontage, set a hair proud of the brick so they cannot z-fight it. Lit
+  // from inside at night, reflecting the sky by day: either way they are the
+  // thing that says "this is eight metres tall" without a label. Only the
+  // few blocks near enough to read get them.
+  const lit = (document.documentElement.dataset.theme || 'dark') !== 'light';
+  const glass = lit ? tn.window : tn.glass;
+  const pane = (px0, px1, pz0, pz1, py0, py1, hsh) => {
+    // a dark house is a house with the lights off, which is most of them
+    if (lit && (hsh & 3) === 0) return;
+    F.add(quad(P(px0, py0, pz0), P(px1, py0, pz1), P(px1, py1, pz1), P(px0, py1, pz0)),
+          glass, { cull: false, flat: lit, lift: lit ? 0.35 : 0.1, alpha });
+  };
+  const floors = [[1.1, 2.4], [4.2, 5.5]];
+  const o = 0.06;
+  for (let i = 0; i < n; i++) {
+    const c = a0 + ((a1 - a0) * (i + 0.5)) / n, half = Math.abs(a1 - a0) / n * 0.17;
+    for (const [fy0, fy1] of floors) {
+      if (fy1 > e - 0.3) continue;
+      for (const k of [-1, 1]) {
+        const v = c + k * half * 1.6;
+        const hsh = (Math.abs(Math.round(v * 7 + fy0 * 31)) * 2654435761) >>> 24;
+        if (along === 'x') {
+          pane(v - half, v + half, z0 - o, z0 - o, fy0, fy1, hsh);
+          pane(v + half, v - half, z1 + o, z1 + o, fy0, fy1, hsh >> 2);
+        } else {
+          pane(x0 - o, x0 - o, v + half, v - half, fy0, fy1, hsh);
+          pane(x1 + o, x1 + o, v - half, v + half, fy0, fy1, hsh >> 2);
+        }
+      }
+    }
   }
 }
 
@@ -280,7 +375,7 @@ const smooth = (t) => t * t * (3 - 2 * t);
 function bowlSurface(F, tn, detail) {
   // While the camera travels, the bowl is a massing model. Sixty frames a
   // second of a coarse stadium beats twelve frames a second of a fine one.
-  const NT = detail ? 84 : 30, ND = detail ? 26 : 9;
+  const NT = detail ? 104 : 32, ND = detail ? 26 : 10;
   const envNS = envelope(D.sides.NS, ND), envW = envelope(D.sides.W, ND), envE = envelope(D.sides.E, ND);
   const outNS = D.sides.NS.out, outW = D.sides.W.out, outE = D.sides.E.out;
 
@@ -332,21 +427,31 @@ function bowlSurface(F, tn, detail) {
       let hsh = (i * 374761393 + j * 668265263) | 0;
       hsh = (hsh ^ (hsh >>> 13)) * 1274126177 | 0;
       const r01 = (((hsh ^ (hsh >>> 16)) >>> 0) % 1000) / 1000;
-      // Two seat greys in soft bands, never a club's colours — and a speckle
-      // on top, because a full stand is not a flat surface.
-      // Two seat greys in broad horizontal bands — never a club's colours —
-      // with a whisper of speckle so a full stand is not a flat surface.
-      const seatTone = seated ? (j % 14 < 5 ? tn.seatHi : tn.seat) : tn.concrete;
+      // Three things break the rake up, all of them things a real stand has:
+      // the row rhythm — a seat back catches the light, the tread in front of
+      // it does not — a cross gangway every few metres, and the stairs. The
+      // previous two broad bands of grey read as geology, not seating.
+      // ONE PALE THING ONLY. The balcony fronts are the bright concrete and
+      // the flat concourse behind each tier is the same material in shadow.
+      // Give both the full value and the inside of the bowl turns to tartan,
+      // leaving the seating — the thing that tells you how big it is — as
+      // the gaps in a grid.
+      const seatTone = seated ? tn.seat : tn.concrete;
+      const base = seated ? (j % 2 ? 0.055 : -0.055) : -0.26;
       F.add(quad(a, b, c, d2), seatTone,
-            { cull: false, back: seated ? tn.structure : tn.structureDark, lift: (r01 - 0.5) * 0.035 });
+            { cull: false, back: tn.structure, lift: base + (r01 - 0.5) * 0.022 });
     }
     // Wherever the section jumps — the void between one tier's back and the
     // next tier's front — the surface gets a vertical face instead of a ramp.
     for (let j = 0; j < ND; j++) {
       const a = grid[i][j], d2 = grid[i][j + 1], b = grid[i + 1][j], c = grid[i + 1][j + 1];
       if (Math.abs(d2.y - a.y) < 2.2) continue;
+      // The wall between one tier's back row and the next tier's front is a
+      // balcony front, and on every stadium ever built it is pale concrete —
+      // not the dark poché of the section drawing, which was turning the
+      // inside of the bowl into bands of mud.
       F.add(quad(P(a.x, a.y, a.z), P(b.x, b.y, b.z), P(c.x, c.y, c.z), P(d2.x, d2.y, d2.z)),
-            tn.structureDark, { cull: false, back: tn.concrete });
+            tn.concrete, { cull: false, back: tn.structure, lift: 0.05 });
     }
     // the front face down to the pitch, and the rear wall down to the ground
     const f0 = grid[i][0], f1 = grid[i + 1][0];
@@ -355,16 +460,59 @@ function bowlSurface(F, tn, detail) {
     // The OUTSIDE of the stadium is a facade, not poché: the dark tone is for
     // cut material in the section drawing, and using it here turned the
     // building into a black drum.
+    // The OUTSIDE, as three storeys rather than one blank drum: a plinth, the
+    // glazed concourse that rings every modern stadium, and a panelled upper
+    // facade whose bays are the only thing giving the elevation a rhythm.
     const r0 = grid[i][ND], r1 = grid[i + 1][ND];
-    F.add(quad(r1, r0, P(r0.x, 0, r0.z), P(r1.x, 0, r1.z)), tn.concrete,
-          { cull: false, back: tn.structure });
+    const yTop = Math.min(r0.y, r1.y);
+    // (facade bands follow)
+    const wall = (y0, y1, tone, lift = 0) => {
+      if (y1 <= y0 + 0.05) return;
+      F.add(quad(P(r1.x, y1, r1.z), P(r0.x, y1, r0.z), P(r0.x, y0, r0.z), P(r1.x, y0, r1.z)),
+            tone, { cull: false, back: tn.structure, lift });
+    };
+    wall(0, Math.min(7.5, yTop), tn.concrete);
+    wall(7.5, Math.min(13.5, yTop), tn.glass, 0.1);
+    // The bay rhythm is a change of VALUE, not of material. Alternating two
+    // tones across whole bays chopped the elevation into a chequerboard that
+    // was visible from inside the bowl, over the roof.
+    const bay = (i % 3 === 0 ? 0.05 : i % 3 === 1 ? 0 : -0.045);
+    wall(13.5, yTop, tn.panel, bay);
+    // and the ragged top, which follows the stand rather than a level line
+    F.add(quad(r1, r0, P(r0.x, yTop, r0.z), P(r1.x, yTop, r1.z)),
+          tn.panel, { cull: false, back: tn.structure, lift: bay });
+  }
+
+  /* VOMITORIES. Eighteen flights of steps climbing the rake, and they are
+     most of why a photograph of a stand tells you how big it is: a known
+     2.6 m width set against an unknown wall of seats. Laid as their own
+     strips rather than as columns of the mesh, because a column is 2.8 m
+     wide at the front row and 5 m at the back — and a flight of steps that
+     widens as it climbs is the one thing here nobody would believe. */
+  if (!detail) return;
+  const STAIR_W = 2.6;
+  for (let k = 0; k < 18; k++) {
+    const t0 = k / 18, E = envAt(t0), A = [], B = [];
+    for (let j = 0; j <= ND; j++) {
+      const d = (E.out * j) / ND;
+      const pa = at(t0, d);
+      const R = Math.hypot(pa.x, pa.z) || 1;
+      const pb = at(t0 + STAIR_W / (2 * Math.PI * R), d);
+      const y = E.env(j) + 0.09;                 // clear of the rake it sits on
+      A.push(P(pa.x, y, pa.z)); B.push(P(pb.x, y, pb.z));
+    }
+    for (let j = 0; j < ND; j++) {
+      if (Math.abs(A[j + 1].y - A[j].y) < 0.25) continue;   // no steps on the flat
+      F.add(quad(A[j], B[j], B[j + 1], A[j + 1]), tn.concrete,
+            { cull: false, back: tn.structure, lift: -0.06 });
+    }
   }
 }
 
 /* ── the roof ───────────────────────────────────────────────────────── */
 function roof3D(F, tn, detail) {
   const R = D.roof, B = D.bowl;
-  const N = detail ? 72 : 30;
+  const N = detail ? 96 : 34;
   const inner = [], outer = [];
   for (let i = 0; i <= N; i++) {
     const a = (i / N) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
@@ -375,18 +523,29 @@ function roof3D(F, tn, detail) {
     // missed each other in the corners and the district showed through.
     outer.push(P(ca * planRadius(ca, sa, B.depth), R.outerStructure, sa * planRadius(ca, sa, B.depth)));
   }
-  const RINGS = detail ? 7 : 2;
+  const RINGS = detail ? 8 : 2;
   const lerpP = (a, b, t, y0, y1) => P(a.x + (b.x - a.x) * t, y0 + (y1 - y0) * t, a.z + (b.z - a.z) * t);
   for (let i = 0; i < N; i++) {
     const a = inner[i], b = inner[i + 1], c = outer[i + 1], d = outer[i];
     for (let k = 0; k < RINGS; k++) {
       const t0 = k / RINGS, t1 = (k + 1) / RINGS;
+      // The inner third of a cable-net roof is the translucent part — the
+      // bit that has to let light onto the grass — so it is a brighter,
+      // glassier material than the solid skin behind it. And the whole
+      // sweep takes a lift that falls off outwards, because a roof that
+      // is one flat tone from ring to rim reads as a tarpaulin.
       F.add(quad(lerpP(a, d, t0, R.ringTop, R.outerStructure), lerpP(b, c, t0, R.ringTop, R.outerStructure),
                  lerpP(b, c, t1, R.ringTop, R.outerStructure), lerpP(a, d, t1, R.ringTop, R.outerStructure)),
-            tn.roofTop, { cull: false });
+            t0 < 0.3 ? tn.metal : tn.roofTop,
+            { cull: false,
+              // a panel rhythm, four bays to a repeat: enough to read as a
+              // made surface, not enough to read as a stripe
+              lift: 0.13 * (1 - (t0 + t1) / 2) ** 1.6 + (i % 4 === 0 ? 0.03 : 0) });
+      // The soffit is not black. It is a dark surface being bounced into by
+      // a floodlit pitch, so it brightens towards the opening.
       F.add(quad(lerpP(a, d, t0, R.ringBottom, R.fasciaBottom), lerpP(a, d, t1, R.ringBottom, R.fasciaBottom),
                  lerpP(b, c, t1, R.ringBottom, R.fasciaBottom), lerpP(b, c, t0, R.ringBottom, R.fasciaBottom)),
-            tn.roofUnder, { cull: false });
+            tn.roofUnder, { cull: false, lift: 0.52 + 0.26 * (1 - (t0 + t1) / 2) ** 2 });
     }
     // the fascia blade: its top edge at 48 m is the highest thing in the world
     F.add(quad(P(d.x, R.fasciaTop, d.z), P(c.x, R.fasciaTop, c.z),
@@ -402,7 +561,7 @@ function roof3D(F, tn, detail) {
     }
     for (let i = 0; i < N; i += Math.max(1, Math.round(N / 72))) {
       F.addLine([P(inner[i].x, R.ringTop + 0.06, inner[i].z),
-                 P(outer[i].x, R.outerStructure + 0.06, outer[i].z)], tn.structureDark, 1.4, 0.5);
+                 P(outer[i].x, R.outerStructure + 0.06, outer[i].z)], tn.metal, 1, 0.3);
     }
     for (let k = 1; k <= 4; k++) {
       const t = k / 5, ring = [];
@@ -485,11 +644,13 @@ export function drawScenery3D(ctx, V, { w, h, span, detail = true, xray = 0 }) {
       if (!detail && V.distTo(P((s.x0 + s.x1) / 2, s.y1, (s.z0 + s.z1) / 2)) > 650) continue;
       const hsh = Math.abs(Math.round(s.x0 * 3 + s.z0 * 7));
       const wall = wallTone(tn, hsh), roofT = hsh % 3 ? tn.roofing : tn.roofingAlt;
-      if (detail) ridgeFaces(F, s, wall, roofT, houseF, true);
-      else boxFaces(F, { ...s, y1: (s.eaves + s.y1) / 2 }, wall, houseF);
+      if (detail) {
+        const near = V.distTo(P((s.x0 + s.x1) / 2, s.y1, (s.z0 + s.z1) / 2)) < 320;
+        ridgeFaces(F, tn, s, wall, roofT, houseF, true, near);
+      } else boxFaces(F, { ...s, y1: (s.eaves + s.y1) / 2 }, wall, houseF);
       continue;
     }
-    if (s.net) { boxFaces(F, s, tn.net, 0.4); continue; }
+    if (s.net) { goalNet(F, V, tn, s); continue; }
     if (s.tag === 'podium') {
       // the face is a solid, but the deck is a flat surface and belongs with
       // the other flat surfaces — a 250 × 40 m quad in the sorted pass paints
@@ -507,6 +668,38 @@ export function drawScenery3D(ctx, V, { w, h, span, detail = true, xray = 0 }) {
   const n = F.draw(ctx);
   if (dark) nightWash(ctx, V, tn);
   return n;
+}
+
+/* A net is a mesh, and a translucent box is not one: it read as a pane of
+   frosted glass behind the goal. Near enough to see, it becomes the mesh it
+   actually is — a square grid on the back and both sides, sagging off the
+   crossbar; further off, where the squares would be finer than a pixel, the
+   translucent box is the honest average and costs four polygons. */
+function goalNet(F, V, tn, s) {
+  const mid = P((s.x0 + s.x1) / 2, s.y1 / 2, (s.z0 + s.z1) / 2);
+  if (V.distTo(mid) > 170) { boxFaces(F, s, tn.net, 0.4); return; }
+  const { x0, x1, z0, z1, y0, y1 } = s;
+  const G = 0.9;                                    // the mesh, in metres
+  const grid = (ax, bx, az, bz) => {
+    const L = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.round(L / G)), m = Math.max(1, Math.round((y1 - y0) / G));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, px = ax + (bx - ax) * t, pz = az + (bz - az) * t;
+      F.addLine([P(px, y0, pz), P(px, y1, pz)], tn.net, 1, 0.75);
+    }
+    for (let j = 0; j <= m; j++) {
+      const y = y0 + ((y1 - y0) * j) / m;
+      F.addLine([P(ax, y, az), P(bx, y, bz)], tn.net, 1, 0.75);
+    }
+  };
+  grid(x0, x0, z0, z1); grid(x1, x1, z0, z1);       // the two ends of the box
+  grid(x0, x1, z0, z0); grid(x0, x1, z1, z1);       // and its two long sides
+  // the roof of the net, which is what gives a goal its depth from side on
+  for (let i = 0; i <= Math.max(1, Math.round(Math.abs(z1 - z0) / G)); i++) {
+    const t = i / Math.max(1, Math.round(Math.abs(z1 - z0) / G));
+    const pz = z0 + (z1 - z0) * t;
+    F.addLine([P(x0, y1, pz), P(x1, y1, pz)], tn.net, 1, 0.6);
+  }
 }
 
 /* A floodlit night is a lit pitch inside a dark bowl. In three dimensions
@@ -677,15 +870,18 @@ function props3D(F, V, tn, span, Wd, detail) {
         const lx = along ? B.w : B.l, lz = along ? B.l : B.w;
         // Five faces each, times a thousand parked cars, is the single
         // biggest cost in the scene — so a distant car is one card.
-        const big = detail && (B.h * V.f) / V.distTo({ x: p.x, y, z: p.z }) > 9;
+        const px = (B.h * V.f) / V.distTo({ x: p.x, y, z: p.z });
         const paint = p.type === 'bus' ? tn.panel : carTone(tn, p.v);
-        if (big) {
+        if (detail && px > 9) {
+          if (p.type === 'bus') bus3D(F, tn, p.x, p.z, y, B, along, paint, carF);
+          else car3D(F, tn, p.x, p.z, y, B, along, paint, carF);
+        } else if (detail && px > 4) {
+          // mid distance: the body and the glasshouse, no wheels — at six
+          // pixels tall a wheel is a smudge that costs four polygons
           boxFaces(F, { x0: p.x - lx / 2, x1: p.x + lx / 2, z0: p.z - lz / 2, z1: p.z + lz / 2,
-                        y0: y, y1: y + B.h * 0.62 }, paint, carF);
-          // the glasshouse, set in from the body, so a car has a shape
-          const i = 0.17;
-          boxFaces(F, { x0: p.x - lx / 2 + lx * i, x1: p.x + lx / 2 - lx * i,
-                        z0: p.z - lz / 2 + lz * i, z1: p.z + lz / 2 - lz * i,
+                        y0: y + 0.2, y1: y + B.h * 0.62 }, paint, carF);
+          boxFaces(F, { x0: p.x - lx / 2 + lx * 0.17, x1: p.x + lx / 2 - lx * 0.17,
+                        z0: p.z - lz / 2 + lz * 0.17, z1: p.z + lz / 2 - lz * 0.17,
                         y0: y + B.h * 0.6, y1: y + B.h }, tn.glass, carF);
         } else {
           card(p.x, p.z, y, Math.max(lx, lz) * 0.8, B.h, paint, carF);
@@ -694,11 +890,29 @@ function props3D(F, V, tn, span, Wd, detail) {
       case 'tree': case 'treeYoung': if (treeF > 0) {
         const T = p.type === 'tree' ? D.prop.treeMature : D.prop.treeYoung;
         const v = 0.85 + (p.v || 0.5) * 0.3;
-        if (tooSmall(p.x, p.z, y, T.h * v)) break;
+        const hM = T.h * v, rM = T.canopyR * v;
+        if (tooSmall(p.x, p.z, y, hM)) break;
         const leaf = (p.v || 0) > 0.72 ? tn.parkAlt : tn.park;
-        if (steep) { disc(p.x, p.z, y + T.h * v * 0.72, T.canopyR * v, leaf, treeF); break; }
-        if (detail) card(p.x, p.z, y, T.trunkR * 2.4, T.h * v * 0.45, tn.roofingAlt, treeF);
-        canopy(p.x, p.z, y + T.h * v * 0.3, T.canopyR * v, T.h * v * 0.72, leaf, treeF);
+        if (steep) {
+          disc(p.x, p.z, y + hM * 0.74, rM, leaf, treeF);
+          disc(p.x + rM * 0.22, p.z - rM * 0.18, y + hM * 0.86, rM * 0.6, tn.parkAlt, treeF);
+          break;
+        }
+        // A trunk is a round thing with a lit side and a shaded side, and a
+        // flat card has neither — so it is a box, and takes the same light as
+        // everything else. The crown is three overlapping lobes rather than
+        // one blob: a single ellipse is a balloon on a stick, three is a tree.
+        if (detail) {
+          const r = Math.max(0.09, T.trunkR);
+          boxFaces(F, { x0: p.x - r, x1: p.x + r, z0: p.z - r, z1: p.z + r,
+                        y0: y, y1: y + hM * 0.46 }, tn.trunk, treeF);
+        } else {
+          card(p.x, p.z, y, T.trunkR * 2.4, hM * 0.45, tn.trunk, treeF);
+        }
+        if (!detail) { canopy(p.x, p.z, y + hM * 0.30, rM, hM * 0.62, leaf, treeF); break; }
+        canopy(p.x, p.z, y + hM * 0.26, rM, hM * 0.62, tn.parkDeep, treeF);
+        canopy(p.x - rM * 0.30, p.z + rM * 0.10, y + hM * 0.34, rM * 0.72, hM * 0.50, leaf, treeF);
+        canopy(p.x + rM * 0.26, p.z - rM * 0.12, y + hM * 0.46, rM * 0.60, hM * 0.42, tn.parkAlt, treeF);
       } break;
       case 'lamp':
         if (carF > 0 && detail && !tooSmall(p.x, p.z, y, p.h || D.prop.lamp.h))

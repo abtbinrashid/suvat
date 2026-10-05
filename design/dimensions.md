@@ -117,8 +117,8 @@ A cable net on an elliptical compression ring, open over the pitch.
 | Outer fascia | bottom edge | 43 |
 | Roof plane | at the outer structure line | 46.5 |
 | Compression ring | top / bottom | 44 / 42.5 |
-| Roof opening | semi-axes a × b | undefined × undefined |
-| Roof opening | full size | NaN × NaN |
+| Roof opening | the front row inset by | 2 |
+| Roof opening | along the pitch × across it | 120 × 80 |
 | Floodlight strip | height, width | 42, 1.2 |
 | Cables | radial / hoop | 28 / 3 |
 
@@ -218,7 +218,6 @@ last quarter of its range, so nothing pops.
 | people | 460 |
 | boardPanels | 260 |
 | pitchLines | 900 |
-| players | 340 |
 | seatRows | 130 |
 | seatTexture | 440 |
 | roofCables | 950 |

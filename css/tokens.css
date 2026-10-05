@@ -137,7 +137,7 @@
   --sun: #ffe9b8; --sun-glow: rgba(255,228,170,0.40);
   --shadow: rgba(0,0,0,0.42); --sky-fill: #2a3a58;
   --earth: #1c1c23; --interior: #1a1a23; --terrain: #1f2622;
-  --grass: #3f7a4a; --grass-alt: #366a40; --runoff: #28472f;
+  --grass: #3f7a4a; --grass-alt: #2f6239; --runoff: #28472f;
   --pitchline: rgba(255,255,255,0.80);
   --concrete: #2e3139; --paving: #282c33; --asphalt: #1b1e24;
   --roadline: rgba(255,255,255,0.45); --ballast: #232630;
@@ -148,6 +148,7 @@
   --structure: #6d7684; --structure-dark: #5c6572;
   --roof-top: #3e444e; --roof-under: #1c1f26;
   --prop: #70757d; --water: #16222b; --park: #22361f; --park-alt: #1c2d1a;
+  --park-deep: #15220f; --trunk: #2b2520; --tyre: #121316;
 
   /* The object is a BALL, so it is drawn as one: lit from above-left, with a
      seam and a rim. It is not a quantity and so does not take a quantity's
@@ -168,17 +169,18 @@
   --sun: #ffeacb; --sun-glow: rgba(255,206,138,0.50);
   --shadow: rgba(54,42,30,0.26); --sky-fill: #b9d2e8;
   --earth: #6e675d; --interior: #b6ad9a; --terrain: #9fae86;
-  --grass: #6f9e5b; --grass-alt: #659253; --runoff: #567e46;
+  --grass: #76a660; --grass-alt: #5e8b4d; --runoff: #567e46;
   --pitchline: rgba(255,255,255,0.95);
   --concrete: #b6b0a4; --paving: #c3c0b6; --asphalt: #8b8884;
   --roadline: rgba(255,255,255,0.92); --ballast: #a79f93;
   --brick: #a9705f; --render: #d9cdba; --panel: #8fa0a8;
   --roofing: #6b5a52; --roofing-alt: #574f4b; --window: #ffe6ad;
   --glass: rgba(176,205,224,0.55); --metal: #9ca4ab; --net: rgba(255,255,255,0.78);
-  --seat: #6e7886; --seat-alt: #5f6975; --seat-hi: #828d9b; --board: #8e887c;
+  --seat: #65707f; --seat-alt: #5f6975; --seat-hi: #828d9b; --board: #8e887c;
   --structure: #cbc2b2; --structure-dark: #4a4238;
   --roof-top: #b4bac1; --roof-under: #7b8086;
   --prop: #5d564e; --water: #7fa8bf; --park: #7fa75f; --park-alt: #6e9450;
+  --park-deep: #5a7f41; --trunk: #74604d; --tyre: #2b2824;
   --ball-hi: #ffffff; --ball: #ece5d6; --ball-low: #a2957f; --ball-line: #3d352b;
   --flood: #fff6df; --far-grid: rgba(26,23,20,0.16);
   /* traffic: silver, graphite, white, navy, bottle green. No reds — red at

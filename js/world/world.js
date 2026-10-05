@@ -280,7 +280,6 @@ function build() {
     for (const t of [-1, 1]) S(gl - s * pr, gl + s * pr, t * gw - pr, t * gw + pr, 0, gh, 'white', 'goalpost');
     S(gl - s * pr, gl + s * pr, -gw, gw, gh - pr * 2, gh, 'white', 'crossbar');
     S(gl, gl + s * D.goal.netDepth, -gw - 0.1, gw + 0.1, 0, gh, 'net', 'goal net', { net: true, mesh: D.goal.netMesh });
-    PR('person', gl - s * 1.6, 0, 0, { v: 0.5, role: 'keeper' });
     PR('flag', gl, P.halfW, 0); PR('flag', gl, -P.halfW, 0);
   }
   // hoardings all the way round, in 2.4 m panels
@@ -289,17 +288,21 @@ function build() {
     S(-B.atX, B.atX, s * B.atZ, s * B.atZ + s * B.depth, 0, B.height, 'board', 'hoarding', { panel: B.panel, axis: 'x' });
     S(s * B.atX, s * B.atX + s * B.depth, -B.atZ, B.atZ, 0, B.height, 'board', 'hoarding', { panel: B.panel, axis: 'z' });
   }
-  S(-D.bench.length / 2, D.bench.length / 2, D.bench.atZ - D.bench.depth, D.bench.atZ, 0, D.bench.roofH, 'glass', 'technical area');
+  // The dugout, as a thing rather than a pane: a solid back and seats, with
+  // the glass canopy over it. One translucent box on its own read as a sheet
+  // of blue hanging at the touchline.
+  S(-D.bench.length / 2, D.bench.length / 2, D.bench.atZ - D.bench.depth, D.bench.atZ,
+    0, D.bench.roofH * 0.52, 'board', 'technical area');
+  S(-D.bench.length / 2, D.bench.length / 2, D.bench.atZ - D.bench.depth, D.bench.atZ,
+    D.bench.roofH * 0.52, D.bench.roofH, 'glass', 'dugout canopy');
 
-  /* the twenty-two, plus the referee: a kick-off shape, fixed forever */
-  const FORM = [
-    [-46, 0], [-34, -20], [-34, -7], [-34, 7], [-34, 20], [-20, -14], [-20, 0], [-20, 14],
-    [-8, -22], [-8, 0], [-8, 22], [-2, -4],
-    [46, 0], [34, 20], [34, 7], [34, -7], [34, -20], [20, 14], [20, 0], [20, -14],
-    [8, 22], [8, 0], [8, -22], [3, 5],
-  ];
-  FORM.forEach(([x, z], i) => PR('person', x, z, 0, { v: (i % 7) / 7, role: i < 12 ? 'homeTeam' : 'awayTeam' }));
-  PR('person', -4, -9, 0, { v: 0.3, role: 'referee' });
+  /* NOBODY ON THE PITCH. A figure 1.8 m tall seen from the touchline is about
+     the size of the ball's velocity arrow, and twenty-three of them stand in
+     a field the flight has to cross — so the one thing the eye is meant to
+     follow had twenty-three decoys the same size and nearly the same value.
+     The scale references live outside the bowl, where they cost nothing: the
+     crowd, the cars on the road, the people on the podium. The grass is left
+     empty for the ball. */
 
   /* ── the bowl: four sides, each a section swept along its front ───── */
   const sides = [
