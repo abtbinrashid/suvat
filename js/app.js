@@ -336,9 +336,15 @@ function recompute() {
       second = endAt(second, tMeet);
       state.caught = { t: tMeet, y: tg.y - 0.5 * solved.params.g * tMeet * tMeet };
     } else {
-      state.caught = null;                 // it never gets there
+      // It never gets there. Work out WHY, because "it missed" is the one
+      // thing this scenario is not allowed to leave unexplained.
+      state.caught = null;
+      const fall = tg && solved.params.g > 0 ? Math.sqrt((2 * tg.y) / solved.params.g) : Infinity;
+      state.verdict = { kind: 'short', landed: fall,
+        text: `Too slow — the monkey reached the sand after ${fmt(fall, 2)} s, before the banana covered ${fmt(tg.x, 0)} m. Throw harder.` };
     }
-  } else state.caught = null;
+  } else { state.caught = null; state.verdict = null; }
+  if (state.caught) state.verdict = { kind: 'caught' };
   btn.disabled = false;
   btn.textContent = solved.params.u < 0.05
     ? 'Release it'                      // a drop has no launch speed to quote
@@ -582,6 +588,7 @@ function draw() {
   if (state.step !== 'flight' || !traj) { dirty = false; return; }
   const R = state.resolve ? resolveAt(traj, state.t) : null;
   const opts = { traj, second, ghost, t: state.t, show: state.show, fired: state.launched,
+                 verdict: state.verdict,
                  markers: state.markers || {}, scenario, secondLabel: scenario.second?.label,
                  resolve: R, hover: state.hover };
   // An exhibit is staged rather than surveyed: its own plate, its own scale on
@@ -605,8 +612,9 @@ function frame(now) {
   last = now;
   if (state.step === 'flight' && state.playing && traj) {
     state.t += dt * state.rate;
-    if (state.t >= traj.tMax) {
-      state.t = traj.tMax; state.playing = false; setPlayIcon(false);
+    const tStop = Math.max(traj.tMax, scenario?.exhibit && second ? second.tMax : 0);
+    if (state.t >= tStop) {
+      state.t = tStop; state.playing = false; setPlayIcon(false);
       showDone();                       // only ever on a flight that ran its course
     }
     dirty = true;

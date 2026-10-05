@@ -48,7 +48,8 @@ function stage(o, w, h, pad) {
   let xHi = Math.max(ex.x1, isFinite(f.range) ? f.range : f.horiz * f.tMax);
   let yHi = Math.max(ex.yTop, f.apexHeight, f.params.h);
   if (second) xHi = Math.max(xHi, second.range ?? 0);
-  if (markers?.target) { xHi = Math.max(xHi, markers.target.x); yHi = Math.max(yHi, markers.target.y); }
+  // the tree stands beside the monkey, so the frame has to hold it too
+  if (markers?.target) { xHi = Math.max(xHi, markers.target.x + 4.5); yHi = Math.max(yHi, markers.target.y + 2.2); }
   const xLo = Math.min(0, ex.x0);
 
   const bw = w - pad.l - pad.r, bh = h - pad.t - pad.b;
@@ -150,7 +151,7 @@ function strobeTimes(tMax) {
 
 /* ══ the renderer ═══════════════════════════════════════════════════════ */
 export function render(canvas, cam, o) {
-  const { traj: f, second, t, show, markers = {}, scenario, fired = true } = o;
+  const { traj: f, second, t, show, markers = {}, scenario, fired = true, verdict = null } = o;
   if (!f) return null;
   const { ctx: g, w, h } = fitCanvas(canvas);
   const P = palette();
@@ -180,8 +181,12 @@ export function render(canvas, cam, o) {
   }
 
   /* ── the exposures ────────────────────────────────────────────────── */
-  const tNow = fired ? t : 0;
-  const { dt, n } = strobeTimes(f.tMax);
+  // Run to whichever finishes last. When the banana lands short, the monkey
+  // is still falling, and freezing it in mid-air reads as a rendering fault
+  // rather than as the thing that actually happened.
+  const tEnd = Math.max(f.tMax, second?.tMax ?? 0);
+  const tNow = fired ? Math.min(t, tEnd) : 0;
+  const { dt, n } = strobeTimes(tEnd);
   const dt0 = dt;
   const shots = [];
   for (let i = 0; i <= n; i++) {
@@ -210,7 +215,8 @@ export function render(canvas, cam, o) {
     const age = shots.length > 1 ? i / (shots.length - 1) : 1;
     const a = fired ? 0.28 + 0.72 * age : 1;
 
-    const p = f.pos(ti), v = f.pos(Math.min(ti + 0.004, f.tMax));
+    const tA = Math.min(ti, f.tMax);
+    const p = f.pos(tA), v = f.pos(Math.min(tA + 0.004, f.tMax));
     const px = S.X(p.x), py = S.Y(p.y);
     const ang = Math.atan2(-(S.Y(v.y) - py), S.X(v.x) - px);
 
@@ -224,13 +230,13 @@ export function render(canvas, cam, o) {
       g.restore();
     }
 
-    let qp = null;
+    let qp = null, drewB = false;
     if (second) {   // drawn second, so it sits in front of the tree behind it
       const q = second.pos(Math.min(ti, second.tMax));
       const qx = S.X(q.x), qy = S.Y(q.y);
       const Lsec = scenario.backdrop === 'beach' ? Math.max(Lbul, 26) : Lbul;
       if (last || i === 0 || apart({ x: qx, y: qy }, lastDrawnB, Lsec * 0.62)) {
-        lastDrawnB = { x: qx, y: qy };
+        lastDrawnB = { x: qx, y: qy }; drewB = true;
         g.save(); g.globalAlpha = a;
         halo(g, qx, qy, Lsec * (last ? 2.4 : 1.25));
         if (scenario.backdrop === 'beach') bananaOrMonkey(g, qx, qy, Lsec, Math.PI / 2, last, false);
@@ -239,15 +245,18 @@ export function render(canvas, cam, o) {
       }
       qp = { x: qx, y: qy };
     }
-    pair.push({ a: { x: px, y: py }, b: qp, i, last });
+    pair.push({ a: { x: px, y: py }, b: qp, i, last, drawn: showA && drewB });
   }
 
   /* ── the height lines: the argument, drawn ────────────────────────── */
   if (show.heightLines !== false && second) {
     g.save();
     g.setLineDash([2.5, 5]); g.lineWidth = 1.2;
+    const grounded = second && isFinite(second.tFlight) ? second.tFlight : Infinity;
     for (const s of pair) {
       if (!s.b) continue;
+      if (shots[s.i] > grounded + 1e-9) continue;       // it has landed; no shared fall left
+      if (!s.drawn && !s.last) continue;                // no line to an exposure nobody can see
       g.globalAlpha = s.last ? 0.9 : 0.4;
       g.strokeStyle = s.last ? PLATE.ink : PLATE.rule;
       g.beginPath(); g.moveTo(s.b.x, s.b.y); g.lineTo(s.a.x, s.a.y); g.stroke();
@@ -255,9 +264,14 @@ export function render(canvas, cam, o) {
     g.restore();
     const last = pair[pair.length - 1];
     const gap = last?.b ? Math.hypot(last.a.x - last.b.x, last.a.y - last.b.y) : Infinity;
-    if (last?.b && gap > 90) {
+    const done = fired && t >= f.tMax - 1e-6;
+    if (verdict?.kind === 'short' && done) {
+      // It fell short. Saying "same fall" here would be a lie: the monkey
+      // stopped falling the moment it hit the sand.
+      pill(g, box.x + box.w / 2, box.y + box.h - 54, verdict.text, 14);
+    } else if (last?.b && gap > 90) {
       pill(g, (last.a.x + last.b.x) / 2, last.a.y, scenario.pairLabel || 'same height');
-    } else if (last?.b && gap < 14 && fired && t >= f.tMax - 1e-6) {
+    } else if (last?.b && gap < 14 && done) {
       // they have met. Say so where it happened, not in a corner.
       const cx = (last.a.x + last.b.x) / 2, cy = (last.a.y + last.b.y) / 2;
       halo(g, cx, cy, 58);

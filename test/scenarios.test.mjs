@@ -69,5 +69,33 @@ group('Both sit under Interesting ones, with everything a card needs', () => {
   ok(SCENARIOS.length === 11, 'eleven scenarios in all');
 });
 
+group('The intro models exist, and none of them changes the landing time', () => {
+  const s = byId('bullet');
+  ok(Array.isArray(s.intro?.models) && s.intro.models.length >= 3, 'three rounds to pick from');
+  const h = 1.5, g = 9.81;
+  const base = flight({ u: s.intro.models[0].u, theta: 0, h, g }).tFlight;
+  for (const mdl of s.intro.models) {
+    const f = flight({ u: mdl.u, theta: 0, h, g });
+    near(f.tFlight - base, 0, 1e-12, `${mdl.name} (${mdl.u} m/s) lands at the same instant`);
+    ok(f.range > 0, `${mdl.name} still goes somewhere — ${f.range.toFixed(0)} m`);
+  }
+  // and the ranges really are different, so the student sees something change
+  const r = s.intro.models.map((mdl) => flight({ u: mdl.u, theta: 0, h, g }).range);
+  ok(new Set(r.map((x) => x.toFixed(0))).size === r.length, 'each round has its own range');
+});
+
+group('The monkey intro spans the reachable and the unreachable', () => {
+  const s = byId('monkey');
+  const m = s.markers.target, h = s.params.h, g = 9.81;
+  const theta = Math.atan2(m.y - h, m.x);
+  const reach = (u) => {
+    const tMeet = m.x / (u * Math.cos(theta));
+    return m.y - 0.5 * g * tMeet * tMeet >= 0;          // still above the sand
+  };
+  ok(s.intro.models.every((mdl) => reach(mdl.u)),
+     'every offered throw reaches the monkey at its starting place');
+  ok(!reach(4), 'a feeble enough throw does NOT, so the failure case is real');
+});
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
