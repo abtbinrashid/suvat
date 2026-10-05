@@ -18,8 +18,10 @@
  * it is a readable curve. The flight is never cropped — this only ever widens
  * the frame.
  */
+import { PALM_H } from './exhibit.js';
+
 export const EXTENT = {
-  warehouse: { x0: -2.2, x1: 9, yTop: 2.4 },
+  warehouse: { x0: -4.5, x1: 9, yTop: 2.4 },   // room at the left for the rig
   beach:     { x0: -3, x1: 16, yTop: 13 },
 };
 
@@ -74,12 +76,15 @@ function rig(g, S, o, PLATE) {
   const bore = Math.max(3, m(0.09));
 
   // bench leg down to the floor
-  // The post stands BEHIND and to one side: a dropped round falls through the
-  // bore line, and a bar drawn there is read as part of the experiment.
-  g.fillStyle = 'rgba(255,255,255,0.035)';
-  const px0 = x - Math.max(16, m(0.45));
-  g.fillRect(px0 - m(0.04), y, m(0.08), S.groundY - y);
-  g.fillRect(px0 - m(0.26), S.groundY - m(0.05), m(0.52), m(0.05));
+  // The post stands WELL to one side, in screen pixels rather than metres: a
+  // released round falls straight down the bore line, and any bar drawn near
+  // that line gets read as part of the experiment. 54 px is clear of the
+  // column at every scale this plate is ever drawn at.
+  g.fillStyle = 'rgba(255,255,255,0.03)';
+  const px0 = x - 54;
+  g.fillRect(px0 - 2, y, 4, S.groundY - y);
+  g.fillRect(px0 - 16, S.groundY - 4, 32, 4);
+  g.fillRect(px0 - 14, y - 7, 60, 7);                 // the bench top, to the muzzle
 
   // barrel, running back off the left edge of the plate
   const bar = grad(g, 0, y - bore, 0, y + bore,
@@ -180,9 +185,13 @@ export function beachBack(g, S, box, o) {
 /** One palm: a leaning trunk with ring scars, a crown, and three coconuts. */
 function palm(g, S, target, PLATE) {
   const m = (v) => Math.max(1, S.m(v));
-  const H = target.y + 1.6;                  // the crown; the monkey hangs under it
-  const CX = target.x + 1.5;                 // and OFF to one side, so the fall
-                                             // is seen against sky, not bark
+  // A TREE IS A TREE. Tying the crown to the monkey made the palm change
+  // height every time the monkey was dragged, so the one fixed object in the
+  // frame stopped being fixed. It stands at PALM_H and the monkey hangs from
+  // a branch at whatever height it is at.
+  const H = Math.max(PALM_H, target.y + 1.6);
+  const CX = target.x + 1.9;                 // off to one side, so the fall is
+                                             // seen against sky, not against bark
   const botX = S.X(target.x + 3.1), botY = S.groundY;
   const topX = S.X(CX), topY = S.Y(H);
   const lw = Math.max(2.4, m(0.42));
@@ -223,11 +232,18 @@ function palm(g, S, target, PLATE) {
       g.lineTo(px - Math.cos(a) * s * 0.45, py + s); g.stroke();
     }
   }
-  // the frond it is holding — short, and on the side the monkey hangs from
-  g.strokeStyle = '#2d5c3f'; g.lineWidth = Math.max(1.6, m(0.17)); g.lineCap = 'round';
-  g.beginPath(); g.moveTo(topX, topY);
-  g.quadraticCurveTo(S.X(CX - 1.2), S.Y(target.y + 1.5), S.X(target.x), S.Y(target.y + 0.3));
+  // THE BRANCH IT LETS GO OF. Without it the monkey hangs in mid-air and the
+  // one thing the scenario turns on — that it was holding something — is lost.
+  const by = S.Y(target.y + 0.42);
+  g.strokeStyle = '#4a3a2a'; g.lineWidth = Math.max(2, m(0.18)); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(S.X(CX), by + m(0.3));
+  g.quadraticCurveTo(S.X((CX + target.x) / 2), by - m(0.25), S.X(target.x - 0.35), by);
   g.stroke();
+  g.strokeStyle = '#2d5c3f'; g.lineWidth = Math.max(1.2, m(0.1));
+  for (let i = 0; i < 4; i++) {                 // a few leaves on it
+    const k = 0.3 + i * 0.18, lx = S.X(CX + (target.x - CX) * k), ly = by - m(0.12);
+    g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx - m(0.2), ly - m(0.45)); g.stroke();
+  }
 
   // coconuts
   for (let i = 0; i < 3; i++) {

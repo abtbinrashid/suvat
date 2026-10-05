@@ -19,6 +19,8 @@
 import { fitCanvas, palette, fmt, clamp, labels } from './util.js';
 import { warehouseBack, beachBack, EXTENT } from './backdrops.js';
 
+export const PALM_H = 12.5;      // the tree is a tree, not a function of the monkey
+
 const PLATE = {
   ink: '#f2efe9', inkMid: 'rgba(242,239,233,0.62)', inkFaint: 'rgba(242,239,233,0.34)',
   bg0: '#1c1b18', bg1: '#0e0e0c',
@@ -49,7 +51,11 @@ function stage(o, w, h, pad) {
   let yHi = Math.max(ex.yTop, f.apexHeight, f.params.h);
   if (second) xHi = Math.max(xHi, second.range ?? 0);
   // the tree stands beside the monkey, so the frame has to hold it too
-  if (markers?.target) { xHi = Math.max(xHi, markers.target.x + 4.5); yHi = Math.max(yHi, markers.target.y + 2.2); }
+  if (markers?.target) {
+    xHi = Math.max(xHi, markers.target.x + 4.5);
+    // the palm is a fixed object; the frame holds it and little else above
+    yHi = Math.max(f.apexHeight, f.params.h, markers.target.y + 2.2, PALM_H + 1.4);
+  }
   const xLo = Math.min(0, ex.x0);
 
   const bw = w - pad.l - pad.r, bh = h - pad.t - pad.b;
@@ -224,7 +230,7 @@ export function render(canvas, cam, o) {
     if (showA) {
       lastDrawnA = { x: px, y: py };
       g.save(); g.globalAlpha = a;
-      halo(g, px, py, Lbul * (last ? 2.4 : 1.25));
+      halo(g, px, py, Lbul * (last ? 1.7 : 1.1));
       if (scenario.backdrop === 'beach') bananaOrMonkey(g, px, py, Lbul, ang, last, true);
       else bullet(g, px, py, Lbul, ang, last);
       g.restore();
@@ -238,7 +244,7 @@ export function render(canvas, cam, o) {
       if (last || i === 0 || apart({ x: qx, y: qy }, lastDrawnB, Lsec * 0.62)) {
         lastDrawnB = { x: qx, y: qy }; drewB = true;
         g.save(); g.globalAlpha = a;
-        halo(g, qx, qy, Lsec * (last ? 2.4 : 1.25));
+        halo(g, qx, qy, Lsec * (last ? 1.7 : 1.1));
         if (scenario.backdrop === 'beach') bananaOrMonkey(g, qx, qy, Lsec, Math.PI / 2, last, false);
         else bullet(g, qx, qy, Lsec, Math.PI / 2, last);
         g.restore();
@@ -257,8 +263,8 @@ export function render(canvas, cam, o) {
       if (!s.b) continue;
       if (shots[s.i] > grounded + 1e-9) continue;       // it has landed; no shared fall left
       if (!s.drawn && !s.last) continue;                // no line to an exposure nobody can see
-      g.globalAlpha = s.last ? 0.9 : 0.4;
-      g.strokeStyle = s.last ? PLATE.ink : PLATE.rule;
+      g.globalAlpha = s.last ? 0.95 : 0.6;
+      g.strokeStyle = PLATE.ink;                       // near-white: this is the point
       g.beginPath(); g.moveTo(s.b.x, s.b.y); g.lineTo(s.a.x, s.a.y); g.stroke();
     }
     g.restore();
@@ -268,13 +274,15 @@ export function render(canvas, cam, o) {
     if (verdict?.kind === 'short' && done) {
       // It fell short. Saying "same fall" here would be a lie: the monkey
       // stopped falling the moment it hit the sand.
-      pill(g, box.x + box.w / 2, box.y + box.h - 54, verdict.text, 14);
+      pill(g, box.x + box.w / 2, box.y + 56, verdict.text, 14);
     } else if (last?.b && gap > 90) {
-      pill(g, (last.a.x + last.b.x) / 2, last.a.y, scenario.pairLabel || 'same height');
+      const mid = pair.filter((s) => s.b && s.drawn && Math.abs(s.a.x - s.b.x) > 110);
+      const s = mid.length ? mid[Math.floor(mid.length * 0.45)] : last;
+      pill(g, (s.a.x + s.b.x) / 2, s.a.y, scenario.pairLabel || 'same height');
     } else if (last?.b && gap < 14 && done) {
       // they have met. Say so where it happened, not in a corner.
       const cx = (last.a.x + last.b.x) / 2, cy = (last.a.y + last.b.y) / 2;
-      halo(g, cx, cy, 58);
+      halo(g, cx, cy, 34);
       // offset the label clear of the catch itself — a pill over the moment it
       // is naming hides the only thing worth looking at
       const side = cx > box.x + box.w * 0.55 ? -1 : 1;
@@ -290,8 +298,8 @@ export function render(canvas, cam, o) {
   /* ── what the plate is not telling you straight ───────────────────── */
   const real = isFinite(f.range) ? f.range : f.horiz * f.tMax;
   const foot = S.kx < 0.92
-    ? `Sideways distance squeezed ${fmt(1 / S.kx, 1)}× to fit · real flight ≈ ${fmt(real, 0)} m`
-    : `1 unit = 1 m on both axes · flight ${fmt(real, 1)} m`;
+    ? `Sideways squeezed ${fmt(1 / S.kx, 1)}× to fit — the real path is far flatter than this · range ${fmt(real, 0)} m`
+    : `1 unit = 1 m on both axes · range ${fmt(real, 1)} m`;
   text(g, box.x + box.w - 14, box.y + box.h - 16, foot, { align: 'right', size: 13, col: PLATE.inkFaint });
   text(g, box.x + box.w - 14, box.y + 18, `Flash every ${fmt(dt, dt < 0.1 ? 3 : 2)} s`,
        { align: 'right', size: 13, col: PLATE.inkFaint });
@@ -331,14 +339,14 @@ export function monkeyGlyph(g, x, y, s, lit) {
   g.lineJoin = 'round'; g.lineCap = 'round';
   g.beginPath(); g.ellipse(x, y, b * 0.82, b, 0, 0, Math.PI * 2); g.stroke();
   g.beginPath(); g.arc(x, y - b - hd * 0.6, hd, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = lit ? '#c89a5e' : '#9b7747';
+  g.fillStyle = lit ? '#9aa7b4' : '#6f7985';
   g.beginPath(); g.ellipse(x, y, b * 0.82, b, 0, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.arc(x, y - b - hd * 0.6, hd, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.arc(x - hd, y - b - hd * 0.75, hd * 0.44, 0, Math.PI * 2);
   g.arc(x + hd, y - b - hd * 0.75, hd * 0.44, 0, Math.PI * 2); g.fill();
-  g.fillStyle = lit ? '#f0dcb4' : '#c2a97f';
+  g.fillStyle = lit ? '#d9e2ea' : '#9aa4af';
   g.beginPath(); g.ellipse(x, y - b - hd * 0.45, hd * 0.6, hd * 0.48, 0, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = lit ? '#c89a5e' : '#9b7747';
+  g.strokeStyle = lit ? '#9aa7b4' : '#6f7985';
   g.lineWidth = Math.max(1.4, s * 0.1); g.lineCap = 'round';
   g.beginPath();
   g.moveTo(x - b * 0.6, y - b * 0.2); g.lineTo(x - b * 1.6, y - b * 1.3);

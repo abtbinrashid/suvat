@@ -340,8 +340,9 @@ function recompute() {
       // thing this scenario is not allowed to leave unexplained.
       state.caught = null;
       const fall = tg && solved.params.g > 0 ? Math.sqrt((2 * tg.y) / solved.params.g) : Infinity;
+      const got = traj.horiz * Math.min(fall, traj.tMax);
       state.verdict = { kind: 'short', landed: fall,
-        text: `Too slow — the monkey reached the sand after ${fmt(fall, 2)} s, before the banana covered ${fmt(tg.x, 0)} m. Throw harder.` };
+        text: `Too slow — the monkey was on the sand after ${fmt(fall, 2)} s, with the banana still ${fmt(Math.max(0, tg.x - got), 0)} m short. Throw harder.` };
     }
   } else { state.caught = null; state.verdict = null; }
   if (state.caught) state.verdict = { kind: 'caught' };
