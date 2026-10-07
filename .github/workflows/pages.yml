@@ -46,5 +46,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+      # The artifact index is eventually consistent. On 7 October 2026 the
+      # upload finalized at 16:35:54.97 and deploy-pages listed the run's
+      # artifacts 350 ms later, found zero, and failed the deploy with
+      # "No artifacts named github-pages were found" — while the artifact
+      # sat there with an ID and a byte count. The site stayed on the
+      # previous commit until someone noticed. Five seconds is cheaper than
+      # a silent stale deploy.
+      - run: sleep 5
       - id: deployment
         uses: actions/deploy-pages@v4
