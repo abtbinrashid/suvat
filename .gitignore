@@ -3,3 +3,6 @@ node_modules/
 *.log
 shots/
 dev-drive.js
+
+# local screenshots and captures (design docs use SVG)
+*.png
