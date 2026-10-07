@@ -23,22 +23,19 @@ const DEG = Math.PI / 180;
 
 /**
  * Build a full description of one projectile's flight.
- * @param {{u:number, theta:number, h:number, g:number, azimuth:number}} p
+ * @param {{u:number, theta:number, h:number, g:number}} p
  *   u       launch speed        (m s⁻¹)
  *   theta   angle of elevation  (degrees, may be negative for a downward throw)
  *   h       launch height       (m)
  *   g       gravitational field strength (m s⁻², positive downwards)
- *   azimuth compass bearing of the launch, for the 3D view (degrees)
  */
-export function flight({ u, theta, h, g, azimuth = 0 }) {
+export function flight({ u, theta, h, g }) {
   const th = theta * DEG;
-  const az = azimuth * DEG;
 
   // Resolve the launch velocity into components. This is step one of every
   // projectile question and the reason cos/sin appear at all.
   const horiz = u * Math.cos(th);          // speed across the ground
-  const ux = horiz * Math.cos(az);
-  const uz = horiz * Math.sin(az);
+  const ux = horiz;                        // the flight stays in one vertical plane
   const uy = u * Math.sin(th);             // vertical component
 
   // Time of flight: solve h + uy·t − ½g·t² = 0 for the positive root.
@@ -60,20 +57,19 @@ export function flight({ u, theta, h, g, azimuth = 0 }) {
   const pos = (t) => ({
     x: ux * t,
     y: h + uy * t - 0.5 * g * t * t,
-    z: uz * t,
   });
-  const vel = (t) => ({ x: ux, y: uy - g * t, z: uz });
-  const speed = (t) => { const v = vel(t); return Math.hypot(v.x, v.y, v.z); };
+  const vel = (t) => ({ x: ux, y: uy - g * t });
+  const speed = (t) => { const v = vel(t); return Math.hypot(v.x, v.y); };
 
   const vLanding = speed(bounded);
   const angleAt = (t) => {
     const v = vel(t);
-    return (Math.atan2(v.y, Math.hypot(v.x, v.z)) / DEG);
+    return (Math.atan2(v.y, Math.abs(v.x)) / DEG);
   };
 
   return {
-    params: { u, theta, h, g, azimuth },
-    ux, uy, uz, horiz,
+    params: { u, theta, h, g },
+    ux, uy, horiz,
     tFlight, tMax: bounded, infinite: !isFinite(tFlight),
     tApex: apexInFlight ? tApex : (uy > 0 ? tApex : 0),
     apexHeight: Math.max(h, apexHeight),

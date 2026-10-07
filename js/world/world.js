@@ -1,10 +1,10 @@
 // world.js — the stadium and the district around it, built once.
 //
-// ONE MODEL, TWO PROJECTIONS. Everything below is stored in world metres and
-// nothing is stored twice. The 2D view takes a CROSS-SECTION of it; the 3D view
-// EXTRUDES the same records. That is the only way the two views can be
-// guaranteed to show identical geometry at identical positions, so it is worth
-// the indirection.
+// ONE MODEL, ONE PROJECTION. Everything below is stored in world metres and
+// nothing is stored twice. The side-on view takes a CROSS-SECTION of it along
+// the plane the flight happens in. Keeping the model in three dimensions and
+// cutting it is what lets the section move with the launch site instead of
+// being drawn once per scenario, so it is worth the indirection.
 //
 // Record kinds:
 //   ground   a flat surface at one height          {x0,x1,z0,z1,y,tone}
@@ -15,7 +15,8 @@
 //   roof     the cable net on its elliptical ring
 //
 // Positions are deterministic: every "random" placement comes from a hash of
-// its own index, so the 2D slice and the 3D extrusion agree exactly.
+// its own index, so the same crowd stands in the same seats every time and two
+// slices through the same block agree with each other.
 
 import { D, tierSteps } from './dims.js';
 
@@ -38,7 +39,7 @@ export function roundedHalf(halfAlong, halfPerp, r, p) {
   return halfAlong - r + Math.sqrt(r * r - d * d);
 }
 
-/** Outline of a rounded rectangle, for the 3D view and for plan maps. */
+/** Outline of a rounded rectangle, for plan maps. */
 export function roundedRect(halfL, halfW, r, n = 10) {
   const pts = [];
   const corner = (cx, cz, a0) => {

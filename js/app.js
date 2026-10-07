@@ -11,8 +11,6 @@ import { SCENARIOS, GROUPS, GRAVITY, byId } from './scenarios.js';
 import { buildWorking, obstacleCheck, resolveAt } from './working.js';
 import * as scene from './render/scene.js';
 import * as exhibit from './render/exhibit.js';
-import * as scene3d from './render/scene3d.js';
-import { createCamera3D } from './render/grid.js';
 import { siteFor } from './world/world.js';
 import { dropToneCache } from './render/world2d.js';
 import { drawGraph, graphSpecs } from './render/graphs.js';
@@ -38,7 +36,6 @@ const SHOWS = [
   { key: 'range',        label: 'Horizontal displacement' },
   { key: 'grid',         label: 'Metre grid' },
   { key: 'ruler',        label: 'Height ruler' },
-  { key: 'xray',         label: 'See through the near stand (3D)' },
 ];
 const EXTRAS = [
   { key: 'graphs',  label: 'Graphs against time' },
@@ -50,9 +47,9 @@ const state = {
   step: 'scenario', id: null,
   given: {}, mass: 1,
   bounce: false, restitution: 0.7,
-  dim: '2d', t: 0, playing: false, launched: false, firedBefore: false,
+  t: 0, playing: false, launched: false, firedBefore: false,
   rate: 1,
-  show: { path: true, velocity: true, apex: true, range: true, grid: false, ruler: true, xray: true,
+  show: { path: true, velocity: true, apex: true, range: true, grid: false, ruler: true,
           components: false, ticks: false, acceleration: false },
   extras: { graphs: false, working: false, energy: false },
   options: false,
@@ -60,7 +57,6 @@ const state = {
 };
 
 const cam = scene.createCamera();
-const cam3 = createCamera3D();
 let scenario = null, solved = null, traj = null, second = null, ghost = null, dirty = true;
 
 /* ── step 1 · scenario ──────────────────────────────────────────────── */
@@ -403,7 +399,7 @@ function launch() {
   if (state.firedBefore) ghost = traj.path(260);
   state.firedBefore = true; state.launched = true;
   state.t = 0; state.playing = true;
-  cam.fit = true; cam3.fit = true;
+  cam.fit = true;
   setPlayIcon(true);
   hideDone();
   go('flight');
@@ -484,7 +480,7 @@ function renderResolve(R) {
 
   // The card stands on the side the object is not on, so it never covers the
   // thing it is describing.
-  const bx = state.dim === '3d' ? cam3._ball?.x : cam._map?.ball?.x;
+  const bx = cam._map?.ball?.x;
   const wide = $('canvas-wrap').getBoundingClientRect().width;
   if (bx != null && wide > 0) box.dataset.side = bx < wide / 2 ? 'right' : 'left';
   box.hidden = false;
@@ -592,10 +588,9 @@ function draw() {
                  verdict: state.verdict,
                  markers: state.markers || {}, scenario, secondLabel: scenario.second?.label,
                  resolve: R, hover: state.hover };
-  // An exhibit is staged rather than surveyed: its own plate, its own scale on
-  // each axis, and no 3D — there is nothing to orbit in a strobe photograph.
+  // An exhibit is staged rather than surveyed: its own plate and its own scale
+  // on each axis, because a strobe photograph is not a survey of a place.
   if (scenario?.exhibit) exhibit.render($('scene'), cam, opts);
-  else if (state.dim === '3d') scene3d.render($('scene'), cam3, opts);
   else scene.render($('scene'), cam, opts);
 
   if (state.extras.graphs) {
@@ -622,10 +617,7 @@ function frame(now) {
   }
   // the camera travels rather than teleporting; while it is moving, so is
   // the frame
-  if (state.step === 'flight') {
-    if (state.dim === '3d') { if (scene3d.easeCamera3D(cam3, dt)) dirty = true; }
-    else if (scene.easeCamera(cam, dt)) dirty = true;
-  }
+  if (state.step === 'flight' && scene.easeCamera(cam, dt)) dirty = true;
   if (dirty) draw();
   requestAnimationFrame(frame);
 }
@@ -687,14 +679,6 @@ for (const b of $('rate-seg').children) {
     for (const x of $('rate-seg').children) x.setAttribute('aria-pressed', String(x === b));
   });
 }
-for (const b of $('dim-seg').children) {
-  b.addEventListener('click', () => {
-    state.dim = b.dataset.dim;
-    for (const x of $('dim-seg').children) x.setAttribute('aria-pressed', String(x === b));
-    $('band-seg').hidden = state.dim === '3d';   // zoom bands are the 2D camera
-    cam.fit = true; cam3.fit = true; dirty = true;
-  });
-}
 for (const b of $('band-seg').children) {
   b.addEventListener('click', () => {
     scene.setBand(cam, b.dataset.band);
@@ -705,12 +689,12 @@ for (const b of $('band-seg').children) {
 $('bounce-ck').addEventListener('change', (e) => {
   state.bounce = e.target.checked;
   $('bounce-opts').hidden = !state.bounce;
-  cam.fit = true; cam3.fit = true; recompute(); dirty = true;
+  cam.fit = true; recompute(); dirty = true;
 });
 $('restitution').addEventListener('input', (e) => {
   state.restitution = parseFloat(e.target.value);
   $('rest-val').textContent = state.restitution.toFixed(2);
-  cam.fit = true; cam3.fit = true; recompute(); dirty = true;
+  cam.fit = true; recompute(); dirty = true;
 });
 $('theme-btn').addEventListener('click', () =>
   applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
@@ -737,11 +721,10 @@ document.addEventListener('keydown', (e) => {
 
 addEventListener('resize', () => {
   if (!cam.touched) cam.fit = true;
-  if (!cam3.touched) cam3.fit = true;
   dirty = true;
 });
 const pickScene = () => ({ markers: state.markers, scenario, traj, t: state.t,
-                           fired: state.launched, dim: state.dim });
+                           fired: state.launched });
 const resolveHooks = {
   hover(on) { if (state.hover !== on) { state.hover = on; dirty = true; } },
   click(t) { openResolve(t); },
@@ -750,15 +733,12 @@ const resolveHooks = {
 scene.attachControls($('scene'), cam, () => { dirty = true; },
   pickScene,
   (kind, world) => {
-    if (state.dim !== '2d') return;
     if (kind === 'obstacle') { state.markers.obstacle.x = Math.max(0.5, world.x); state.markers.obstacle.height = Math.max(0, world.y); }
     else if (kind === 'target') { state.markers.target.x = Math.max(0.5, world.x); state.markers.target.y = Math.max(0, world.y); }
     else if (kind === 'heightLine') { state.markers.heightLine = scene.snapHeight(Math.max(0, world.y)); }
     dirty = true;
   },
   resolveHooks);
-scene3d.attachControls3D($('scene'), cam3, () => { if (state.dim === '3d') dirty = true; },
-                         pickScene, resolveHooks);
 
 /* ── boot ───────────────────────────────────────────────────────────── */
 let saved = null;
@@ -770,6 +750,6 @@ go('scenario');
 requestAnimationFrame(frame);
 
 window.SUVAT = { state, get traj() { return traj; }, get solved() { return solved; },
-                 cam, cam3, choose: chooseScenario, launch, go,
+                 cam, choose: chooseScenario, launch, go,
                  showDone, hideDone, openResolve, closeResolve,
                  redraw() { recompute(); draw(); } };

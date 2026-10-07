@@ -1,8 +1,8 @@
 // dims.js — the dimension sheet. One unit is one metre, everywhere.
 //
-// This file is the single source of truth for the whole scene. Both renderers
-// read it, so 2D and 3D cannot drift apart. Nothing here is exaggerated for
-// effect: if a number looks small on screen, it is because it IS small.
+// This file is the single source of truth for the whole scene. Every renderer
+// and every tool reads it, so nothing can drift. Nothing here is exaggerated
+// for effect: if a number looks small on screen, it is because it IS small.
 //
 // AXES.  Right-handed, origin at the CENTRE SPOT on the pitch surface.
 //   x  along the pitch, −52.5 (West goal) … +52.5 (East goal)

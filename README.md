@@ -26,10 +26,10 @@ that is the point.
 
 ## What's in it
 
-**Playground** — the projectile in 2D and 3D. Sliders for launch speed, angle,
-height, gravity and bearing. Velocity resolved into components, greatest height
-and range marked, and equal-Δt ghost marks whose spacing shows horizontal
-velocity staying constant while vertical velocity changes.
+**Playground** — the projectile side on, the way a textbook draws it. Sliders
+for launch speed, angle, height and gravity. Velocity resolved into components,
+greatest height and range marked, and equal-Δt ghost marks whose spacing shows
+horizontal velocity staying constant while vertical velocity changes.
 
 **Graphs** — displacement–time, velocity–time and acceleration–time, sharing one
 time cursor with the animation. The area under each curve is shaded live, so

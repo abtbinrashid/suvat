@@ -150,7 +150,7 @@ export function toEngine(x) {
 
   return {
     ok: true,
-    params: { u, theta, h, g, azimuth: 0 },
+    params: { u, theta, h, g },
     markers: normaliseMarkers(x.markers),
     asks: Array.isArray(x.asks) ? x.asks : [],
     derived, notes,

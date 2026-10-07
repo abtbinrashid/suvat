@@ -14,12 +14,9 @@
 // placed in section u. Nothing is ever converted twice.
 
 import { fitCanvas, palette, stroke, arrow, dot, ballSprite, fmt, niceStep, clamp, labels, cssVar } from './util.js';
-import { createCamera3D } from './grid.js';
 import { slice, siteFor, siteMap, deckProfile } from '../world/world.js';
 import { D } from '../world/dims.js';
 import * as W2 from './world2d.js';
-
-export { createCamera3D };
 
 export function createCamera() { return { cx: 0, cy: 0, scale: 8, fit: true, touched: false, band: 'stadium' }; }
 
@@ -586,9 +583,9 @@ export function attachControls(canvas, cam, onChange, getScene, onMarkerMove, on
 
   /** What is under the pointer: the object, a draggable handle, or the arc. */
   const pick = (e) => {
-    const { markers, scenario, traj, t, fired, dim } = active();
+    const { markers, scenario, traj, t, fired } = active();
     const m = cam._map;
-    if (!m || dim !== '2d') return null;
+    if (!m) return null;
     const w = toWorld(e);
     if (!w) return null;
     const near = (px, py, r = 26) => Math.hypot(w.sxp - px, w.syp - py) < r;
@@ -618,9 +615,7 @@ export function attachControls(canvas, cam, onChange, getScene, onMarkerMove, on
   const isResolve = (k) => k === 'ball' || k === 'path';
 
   canvas.addEventListener('pointermove', (e) => {
-    // Both cameras listen on this one canvas, so each must leave the cursor
-    // alone when its own view is not the one on screen.
-    if (active().dim !== '2d' || drag || dragging) return;
+    if (drag || dragging) return;
     const k = pick(e)?.kind || null;
     canvas.style.cursor = isResolve(k) ? 'pointer' : 'grab';
     const hv = isResolve(k);

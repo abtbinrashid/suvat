@@ -17,7 +17,7 @@ const DEG = 180 / Math.PI;
 
 export function trajectory(p) {
   const { u, theta, h, g, restitution = 0, maxBounces = 0, mass = 1 } = p;
-  const first = flight({ u, theta, h, g, azimuth: 0 });
+  const first = flight({ u, theta, h, g });
 
   const segments = [{ f: first, t0: 0, x0: 0 }];
 
@@ -30,7 +30,7 @@ export function trajectory(p) {
       if (vy < 0.05) break;                        // it has stopped bouncing
       const speed = Math.hypot(vx, vy);
       const ang = Math.atan2(vy, vx) * DEG;
-      const f = flight({ u: speed, theta: ang, h: 0, g, azimuth: 0 });
+      const f = flight({ u: speed, theta: ang, h: 0, g });
       if (!isFinite(f.tFlight) || f.tFlight < 1e-4) break;
       segments.push({ f, t0, x0 });
       t0 += f.tFlight;
@@ -50,7 +50,7 @@ export function trajectory(p) {
     const s = seg(Math.max(0, Math.min(t, tMax)));
     const local = Math.min(Math.max(0, t - s.t0), s.f.tMax);
     const q = s.f.pos(local);
-    return { x: s.x0 + q.x, y: q.y, z: 0 };
+    return { x: s.x0 + q.x, y: q.y };
   };
   const vel = (t) => {
     const s = seg(Math.max(0, Math.min(t, tMax)));
